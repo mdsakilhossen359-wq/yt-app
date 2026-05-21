@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Video App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
+        body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; }
+        .header { position: sticky; top: 0; z-index: 1000; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(10px); padding: 15px; border-bottom: 1px solid #333; }
+        .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
+        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; }
+        .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+        .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
+        .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
+        .nav-btn.active { color: var(--primary); }
+        .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
+        .section { display: none; padding-top: 10px; }
+        .section.active { display: block; }
+        video, audio { width: 100%; border-radius: 10px; background: #000; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
+        .download-btn { border-radius: 50px; font-weight: bold; font-size: 12px; margin: 2px; }
+        .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .progress-box { background: #222; padding: 15px; border-radius: 10px; margin-top: 15px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="input-group">
+        <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
+        <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
+    </div>
+</div>
+
+<div class="container mt-2">
+    <div id="home-sec" class="section active">
+        <div id="video-feed" class="row row-cols-1 row-cols-md-2 row-cols-lg-3"></div>
+        <div id="loader" class="text-center p-3"><div class="spinner-border text-danger"></div></div>
+    </div>
+
+    <div id="playing-sec" class="section">
+        <video id="mainVideo" controls autoplay></video>
+        <div class="p-3 mt-2 bg-dark rounded shadow">
+            <h6 id="playTitle">No Video Selected</h6>
+            <div class="d-flex flex-wrap mt-3">
+                <button onclick="startDownload('1080p')" class="btn btn-primary download-btn">1080p MP4</button>
+                <button onclick="startDownload('720p')" class="btn btn-info download-btn">720p MP4</button>
+                <button onclick="startDownload('mp3')" class="btn btn-warning download-btn">MP3 Audio</button>
+            </div>
+
+            <div id="progressBox" class="progress-box">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span id="downloadStatusText" class="text-warning small">Downloading...</span>
+                    <button onclick="cancelDownload()" class="btn btn-sm btn-danger py-0 px-2 rounded-pill" style="font-size:10px;">Cancel</button>
+                </div>
+                <div class="progress mb-2" style="height: 10px;">
+                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-danger" role="progressbar" style="width: 0%"></div>
+                </div>
+                <div class="d-flex justify-content-between text-muted" style="font-size: 11px;">
+                    <span id="downloadSpeed"><i class="fas fa-bolt me-1"></i>0 KB/s</span>
+                    <span id="downloadETA"><i class="fas fa-clock me-1"></i>00:00</span>
+                </div>
+                <div id="playOfflineBox" class="mt-3 text-center" style="display:none;">
+                    <button id="playOfflineBtn" class="btn btn-success btn-sm w-100 rounded-pill"><i class="fas fa-play-circle me-1"></i>ডাউনলোড করা ফাইলটি প্লে করুন</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="history-sec" class="section">
+        <h5 class="mb-3"><i class="fas fa-history me-2"></i>Play History</h5>
+        <div id="history-list"></div>
+    </div>
+
+    <div id="download-sec" class="section">
+        <h5 class="mb-3"><i class="fas fa-folder-open me-2"></i>My Downloads</h5>
+        <div id="offlinePlayerContainer" class="mb-3 p-2 bg-black rounded" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center text-muted mb-1 px-1" style="font-size:12px;">
+                <span id="offlinePlayingTitle">Playing Offline File</span>
+                <button onclick="closeOfflinePlayer()" class="btn btn-sm text-white p-0"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="playerWrapper"></div>
+        </div>
+        <div id="download-list"></div>
+    </div>
+</div>
+
+<div class="bottom-nav">
+    <button class="nav-btn active" onclick="showSection('home')"><i class="fas fa-home"></i>Home</button>
+    <button class="nav-btn" onclick="showSection('playing')"><i class="fas fa-play"></i>Playing</button>
+    <button class="nav-btn" onclick="showSection('history')"><i class="fas fa-history"></i>History</button>
+    <button class="nav-btn" onclick="showSection('download')"><i class="fas fa-download"></i>Downloads</button>
+</div>
+
+<script>
+    let nextPageToken = "";
+    let currentQuery = "Bangla new songs";
+    let playingUrl = "";
+    let progressInterval;
+
+    async function loadVideos(q, append = false) {
+        document.getElementById('loader').style.display = "block";
+        const res = await fetch(`/search?q=${q}&pageToken=${nextPageToken}`);
+        const data = await res.json();
+        
+        const feed = document.getElementById('video-feed');
+        if (!append) feed.innerHTML = "";
+        data.videos.forEach(v => {
+            feed.innerHTML += `
+                <div class="col">
+                    <div class="v-card" onclick="playThis('${v.url}', '${v.title.replace(/'/g, "")}')">
+                        <img src="${v.thumbnail}">
+                        <div class="v-title">${v.title}</div>
+                    </div>
+                </div>`;
+        });
+        nextPageToken = data.nextPageToken;
+        document.getElementById('loader').style.display = "none";
+    }
+
+    async function playThis(url, title) {
+        playingUrl = url;
+        showSection('playing');
+        document.getElementById('playTitle').innerText = "Loading details...";
+        
+        const fd = new FormData();
+        fd.append('url', url);
+        const res = await fetch('/get_info', {method: 'POST', body: fd});
+        const data = await res.json();
+        
+        document.getElementById('mainVideo').src = data.video_url;
+        document.getElementById('playTitle').innerText = data.title;
+        addToHistory(data.title);
+        document.getElementById('progressBox').style.display = "none";
+    }
+
+    function showSection(name) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById(name + '-sec').classList.add('active');
+        if(event && event.currentTarget) event.currentTarget.classList.add('active');
+        
+        if(name === 'download') loadDownloadFiles();
+    }
+
+    async function startDownload(q) {
+        document.getElementById('progressBox').style.display = "block";
+        document.getElementById('playOfflineBox').style.display = "none";
+        document.getElementById('downloadStatusText').innerText = "Initializing...";
+        
+        const res = await fetch(`/start_download?url=${encodeURIComponent(playingUrl)}&quality=${q}`);
+        const data = await res.json();
+        
+        if(data.error) {
+            alert(data.error);
+            return;
+        }
+
+        clearInterval(progressInterval);
+        progressInterval = setInterval(trackProgress, 1000);
+    }
+
+    async function trackProgress() {
+        const res = await fetch('/progress');
+        const data = await res.json();
+        
+        if (data.status === 'downloading') {
+            document.getElementById('downloadStatusText').innerText = `Downloading... (${data.progress}%)`;
+            document.getElementById('progressBar').style.width = `${data.progress}%`;
+            document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt me-1"></i>${data.speed}`;
+            document.getElementById('downloadETA').innerHTML = `<i class="fas fa-clock me-1"></i>${data.eta}`;
+        } 
+        else if (data.status === 'completed') {
+            clearInterval(progressInterval);
+            document.getElementById('downloadStatusText').innerText = "Successful!";
+            document.getElementById('progressBar').style.width = "100%";
+            
+            const playBtn = document.getElementById('playOfflineBtn');
+            playBtn.onclick = () => playOfflineFile(data.filename);
+            document.getElementById('playOfflineBox').style.display = "block";
+        } 
+        else if (data.status === 'cancelled') {
+            clearInterval(progressInterval);
+            document.getElementById('downloadStatusText').innerText = "Cancelled!";
+            document.getElementById('progressBar').style.width = "0%";
+            alert("ডাউনলোড বাতিল করা হয়েছে।");
+        } 
+        else if (data.status === 'error') {
+            clearInterval(progressInterval);
+            document.getElementById('downloadStatusText').innerText = "Error!";
+            alert("ডাউনলোড ব্যর্থ হয়েছে।");
+        }
+    }
+
+    async function cancelDownload() {
+        if(confirm("ডাউনলোড বাতিল করতে চান?")) {
+            await fetch('/cancel_download');
+        }
+    }
+
+    function playOfflineFile(filename) {
+        showSection('download');
+        document.getElementById('offlinePlayerContainer').style.display = "block";
+        document.getElementById('offlinePlayingTitle').innerText = filename;
+        
+        const wrapper = document.getElementById('playerWrapper');
+        if (filename.endsWith('.mp3')) {
+            wrapper.innerHTML = `<audio src="/play_file/${encodeURIComponent(filename)}" controls autoplay></audio>`;
+        } else {
+            wrapper.innerHTML = `<video src="/play_file/${encodeURIComponent(filename)}" controls autoplay></video>`;
+        }
+    }
+
+    function closeOfflinePlayer() {
+        document.getElementById('offlinePlayerContainer').style.display = "none";
+        document.getElementById('playerWrapper').innerHTML = "";
+    }
+
+    async function loadDownloadFiles() {
+        const res = await fetch('/get_downloads');
+        const files = await res.json();
+        const list = document.getElementById('download-list');
+        list.innerHTML = files.length ? "" : "<p class='text-muted'>কোন ফাইল ডাউনলোড করা হয়নি।</p>";
+        files.forEach(f => {
+            list.innerHTML += `
+                <div class="list-item">
+                    <div>
+                        <i class="${f.endsWith('.mp3') ? 'fas fa-file-audio text-warning' : 'fas fa-file-video text-info'} me-2"></i>
+                        <span>${f}</span>
+                    </div>
+                    <button onclick="playOfflineFile('${f.replace(/'/g, "\\'")}')" class="btn btn-sm btn-success rounded-circle"><i class="fas fa-play"></i></button>
+                </div>`;
+        });
+    }
+
+    function addToHistory(title) {
+        const list = document.getElementById('history-list');
+        list.innerHTML = `<div class="list-item"><i class="fas fa-check-circle text-success"></i> ${title}</div>` + list.innerHTML;
+    }
+
+    function handleSearch() {
+        const val = document.getElementById('searchInput').value;
+        if(val.includes('http')) playThis(val, "Link Video");
+        else { currentQuery = val; nextPageToken = ""; loadVideos(val); showSection('home'); }
+    }
+
+    window.onscroll = () => {
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+            if(document.getElementById('home-sec').classList.contains('active')) loadVideos(currentQuery, true);
+        }
+    };
+
+    window.onload = () => loadVideos(currentQuery);
+</script>
+</body>
+</html>
+
