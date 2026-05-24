@@ -11,7 +11,7 @@
         body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; }
         .header { position: sticky; top: 0; z-index: 1000; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(10px); padding: 15px; border-bottom: 1px solid #333; }
         .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
-        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; }
+        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
         .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
@@ -36,7 +36,7 @@
 </div>
 
 <div class="container mt-3">
-    <!-- হোম সেকশন -->
+    <!-- হোম সেকশন (ভিডিও দেখার জায়গা) -->
     <div id="homeSection" class="section active">
         <div id="videoResults" class="row"></div>
     </div>
@@ -44,7 +44,7 @@
     <!-- প্লেয়িং সেকশন -->
     <div id="playingSection" class="section">
         <div id="playerContainer" class="mb-3"></div>
-        <div id="downloadOptions" class="p-3 bg-card rounded"></div>
+        <div id="downloadOptions" class="p-3 bg-card rounded text-center"></div>
         
         <!-- প্রোগ্রেস ট্র্যাকিং বক্স -->
         <div id="progressBox" class="progress-box">
@@ -70,7 +70,7 @@
 
     <!-- ডাউনলোডস সেকশন -->
     <div id="downloadsSection" class="section">
-        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads (Click to Save on Phone)</h5>
+        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
         <div id="downloadsList"></div>
     </div>
 </div>
@@ -87,12 +87,19 @@
     let intervalId = null;
     let isDownloading = false;
 
+    // অ্যাপ লোড হওয়ার সাথে সাথে ডিফল্ট গান দেখানোর জন্য
+    window.onload = function() {
+        searchVideos('Bangla hit songs');
+    };
+
     function switchSection(sectionId) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         
         document.getElementById(sectionId + 'Section').classList.add('active');
-        event.currentTarget.classList.add('active');
+        if(event) {
+            event.currentTarget.classList.add('active');
+        }
 
         if(sectionId === 'downloads') {
             loadDownloads();
@@ -103,7 +110,6 @@
         const query = document.getElementById('searchInput').value;
         if(!query) return;
 
-        // যদি ইউজার সরাসরি ইউটিউব লিঙ্ক পেস্ট করে
         if(query.includes('youtube.com') || query.includes('youtu.be')) {
             switchSection('playing');
             fetchVideoInfo(query);
@@ -121,9 +127,13 @@
             .then(res => res.json())
             .then(data => {
                 resultsDiv.innerHTML = '';
+                if(data.videos.length === 0) {
+                    resultsDiv.innerHTML = '<p class="text-center w-100">No videos found.</p>';
+                    return;
+                }
                 data.videos.forEach(v => {
                     resultsDiv.innerHTML += `
-                        <div class="col-md-4 col-sm-6">
+                        <div class="col-md-4 col-sm-6 col-12">
                             <div class="v-card" onclick="switchSection('playing'); fetchVideoInfo('${v.url}')">
                                 <img src="${v.thumbnail}">
                                 <div class="v-title">${v.title}</div>
@@ -136,7 +146,7 @@
     function fetchVideoInfo(url) {
         const playerContainer = document.getElementById('playerContainer');
         const optionsDiv = document.getElementById('downloadOptions');
-        playerContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-light"></div><p>Fetching link...</p></div>';
+        playerContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-light"></div><p>Fetching video info...</p></div>';
         optionsDiv.innerHTML = '';
 
         const formData = new FormData();
@@ -156,20 +166,23 @@
 
                 optionsDiv.innerHTML = `
                     <div class="d-flex justify-content-center flex-wrap mt-2">
-                        <button class="btn btn-primary download-btn px-3" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
-                        <button class="btn btn-info download-btn px-3 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
-                        <button class="btn btn-warning download-btn px-3 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
+                        <button class="btn btn-primary download-btn px-3 py-2" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
+                        <button class="btn btn-info download-btn px-3 py-2 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
+                        <button class="btn btn-warning download-btn px-3 py-2 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
                     </div>`;
             });
     }
 
     function triggerDownload(url, quality) {
         if(isDownloading) {
-            alert("একটি ডাউনলোড অলরেডি চলছে! দয়া করে অপেক্ষা করুন।");
+            alert("একটি دانلود অলরেডি চলছে!");
             return;
         }
 
         document.getElementById('progressBox').style.display = 'block';
+        const bar = document.getElementById('progressBar');
+        bar.style.width = '0%';
+        bar.innerText = '0%';
         isDownloading = true;
 
         fetch(`/start_download?url=${encodeURIComponent(url)}&quality=${quality}`)
@@ -181,7 +194,6 @@
                     document.getElementById('progressBox').style.display = 'none';
                     return;
                 }
-                // প্রোগ্রেস বার চেক করা শুরু
                 intervalId = setInterval(checkProgress, 1000);
             });
     }
@@ -193,28 +205,26 @@
                 const bar = document.getElementById('progressBar');
                 const status = document.getElementById('progressStatus');
                 
-                status.innerText = data.status.toUpperCase() + '!';
+                status.innerText = data.status.toUpperCase();
                 bar.style.width = data.progress + '%';
                 bar.innerText = data.progress + '%';
                 document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt"></i> ${data.speed}`;
                 document.getElementById('downloadEta').innerHTML = `<i class="fas fa-clock"></i> ${data.eta}`;
 
-                // ডাউনলোড সম্পূর্ণ হলে ম্যাজিক: সরাসরি ফোনে ফাইল পুশ করা
                 if(data.status === 'completed' && data.progress >= 100) {
                     clearInterval(intervalId);
                     isDownloading = false;
-                    status.innerText = "Completed!";
-                    status.className = "fw-bold text-success";
+                    status.innerText = "COMPLETED!";
                     
-                    // এখানে সরাসরি পাইথনের প্লে_ফাইল রুটে কল দিয়ে ফোনে অটোমেটিক ডাউনলোড নামানো হচ্ছে
-                    window.location.href = `/play_file/${encodeURIComponent(data.filename)}`;
+                    // সার্ভার থেকে ব্রাউজারে রিয়েল ডাউনলোড পুশ করার মেইন মেথড
+                    setTimeout(() => {
+                        window.location.href = `/play_file/${data.filename}`;
+                    }, 1000);
                 } 
                 
                 if(data.status === 'cancelled' || data.status === 'error') {
                     clearInterval(intervalId);
                     isDownloading = false;
-                    status.innerText = data.status === 'cancelled' ? "Cancelled!" : "Error occurred!";
-                    status.className = "fw-bold text-danger";
                 }
             });
     }
@@ -225,7 +235,7 @@
             .then(() => {
                 clearInterval(intervalId);
                 isDownloading = false;
-                document.getElementById('progressStatus').innerText = "Cancelled!";
+                document.getElementById('progressStatus').innerText = "CANCELLED";
                 document.getElementById('progressBar').style.width = '0%';
             });
     }
@@ -239,18 +249,19 @@
             .then(files => {
                 listDiv.innerHTML = '';
                 if(files.length === 0) {
-                    listDiv.innerHTML = '<p class="text-muted text-center mt-4">No downloads found in server folder.</p>';
+                    listDiv.innerHTML = '<p class="text-muted text-center mt-4">No downloads found.</p>';
                     return;
                 }
                 files.forEach(f => {
                     listDiv.innerHTML += `
                         <div class="list-item">
                             <div class="text-truncate fw-bold small" style="max-width: 75%;">${f}</div>
-                            <a href="/play_file/${encodeURIComponent(f)}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
+                            <a href="/play_file/${f}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
                         </div>`;
                 });
             });
     }
 </script>
 </body>
-</html>
+    </html>
+                                                                                                      
