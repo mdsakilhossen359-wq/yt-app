@@ -1,267 +1,156 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Video App</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
-        body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; }
-        .header { position: sticky; top: 0; z-index: 1000; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(10px); padding: 15px; border-bottom: 1px solid #333; }
-        .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
-        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
-        .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
-        .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
-        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
-        .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
-        .nav-btn.active { color: var(--primary); }
-        .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
-        .section { display: none; padding-top: 10px; }
-        .section.active { display: block; }
-        video, audio { width: 100%; border-radius: 10px; background: #000; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
-        .download-btn { border-radius: 50px; font-weight: bold; font-size: 12px; margin: 2px; }
-        .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .progress-box { background: #222; padding: 15px; border-radius: 10px; margin-top: 15px; display: none; }
-    </style>
-</head>
-<body>
+from flask import Flask, render_template, request, send_from_directory, jsonify, make_response
+import yt_dlp
+import os
+import threading
+import requests
 
-<div class="header">
-    <div class="input-group">
-        <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
-        <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
-    </div>
-</div>
+app = Flask(__name__)
+DOWNLOAD_FOLDER = 'downloads'
+YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
-<div class="container mt-3">
-    <!-- হোম সেকশন (ভিডিও দেখার জায়গা) -->
-    <div id="homeSection" class="section active">
-        <div id="videoResults" class="row"></div>
-    </div>
+if not os.path.exists(DOWNLOAD_FOLDER):
+    os.makedirs(DOWNLOAD_FOLDER)
 
-    <!-- প্লেয়িং সেকশন -->
-    <div id="playingSection" class="section">
-        <div id="playerContainer" class="mb-3"></div>
-        <div id="downloadOptions" class="p-3 bg-card rounded text-center"></div>
+download_status = {
+    "status": "idle",
+    "progress": 0,
+    "speed": "0 KB/s",
+    "eta": "00:00",
+    "filename": ""
+}
+cancel_event = threading.Event()
+
+def ytdl_hook(d):
+    global download_status
+    if cancel_event.is_set():
+        raise Exception("Download cancelled by user")
+    
+    if d['status'] == 'downloading':
+        download_status['status'] = 'downloading'
+        total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+        downloaded = d.get('downloaded_bytes', 0)
+        if total > 0:
+            download_status['progress'] = round((downloaded / total) * 100, 2)
         
-        <!-- প্রোগ্রেস ট্র্যাকিং বক্স -->
-        <div id="progressBox" class="progress-box">
-            <div class="d-flex justify-content-between mb-1">
-                <span id="progressStatus" class="fw-bold text-warning">Idle</span>
-                <button class="btn btn-sm btn-danger py-0" onclick="cancelDownload()">Cancel</button>
-            </div>
-            <div class="progress mb-2" style="height: 10px;">
-                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
-            </div>
-            <div class="d-flex justify-content-between text-muted small">
-                <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
-                <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
-            </div>
-        </div>
-    </div>
+        download_status['speed'] = d.get('_speed_str', '0 KB/s')
+        download_status['eta'] = d.get('_eta_str', '00:00')
+    elif d['status'] == 'finished':
+        download_status['status'] = 'completed'
+        download_status['progress'] = 100
 
-    <!-- হিস্ট্রি সেকশন -->
-    <div id="historySection" class="section">
-        <h5 class="mb-3"><i class="fas fa-history text-secondary"></i> Search History</h5>
-        <div id="historyList"></div>
-    </div>
+def run_download(video_url, quality):
+    global download_status
+    cancel_event.clear()
+    
+    q_map = {
+        '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        '720p': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'mp3': 'bestaudio/best'
+    }
 
-    <!-- ডাউনলোডস সেকশন -->
-    <div id="downloadsSection" class="section">
-        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
-        <div id="downloadsList"></div>
-    </div>
-</div>
+    ydl_opts = {
+        'format': q_map.get(quality, 'best'),
+        'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
+        'restrictfilenames': True, 
+        'progress_hooks': [ytdl_hook],
+        'quiet': True
+    }
+    
+    if quality == 'mp3':
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
 
-<!-- বটম নেভিগেশন বার -->
-<div class="bottom-nav">
-    <button class="nav-btn active" onclick="switchSection('home')"><i class="fas fa-home"></i>Home</button>
-    <button class="nav-btn" onclick="switchSection('playing')"><i class="fas fa-play-circle"></i>Playing</button>
-    <button class="nav-btn" onclick="switchSection('history')"><i class="fas fa-history"></i>History</button>
-    <button class="nav-btn" onclick="switchSection('downloads')"><i class="fas fa-download"></i>Downloads</button>
-</div>
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            filename = ydl.prepare_filename(info)
+            if quality == 'mp3':
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
+            
+            download_status['filename'] = os.path.basename(filename)
+            download_status['status'] = 'completed'
+            download_status['progress'] = 100
+    except Exception as e:
+        if "cancelled" in str(e):
+            download_status['status'] = 'cancelled'
+        else:
+            download_status['status'] = 'error'
+        download_status['progress'] = 0
 
-<script>
-    let intervalId = null;
-    let isDownloading = false;
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-    // অ্যাপ লোড হওয়ার সাথে সাথে ডিফল্ট গান দেখানোর জন্য
-    window.onload = function() {
-        searchVideos('Bangla hit songs');
-    };
+@app.route('/search')
+def search():
+    query = request.args.get('q', 'Bangla hit songs')
+    page_token = request.args.get('pageToken', '')
+    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q={query}&type=video&pageToken={page_token}&key={YOUTUBE_API_KEY}"
+    try:
+        r = requests.get(url).json()
+        videos = []
+        for item in r.get('items', []):
+            videos.append({
+                "title": item['snippet']['title'],
+                "thumbnail": item['snippet']['thumbnails']['high']['url'],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            })
+        return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
+    except:
+        return jsonify({"videos": [], "nextPageToken": ""})
 
-    function switchSection(sectionId) {
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+@app.route('/get_info', methods=['POST'])
+def get_info():
+    video_url = request.form.get('url')
+    ydl_opts = {'quiet': True, 'noplaylist': True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(video_url, download=False)
+            formats = info.get('formats', [])
+            play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
+            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+@app.route('/start_download')
+def start_download_route():
+    global download_status
+    video_url = request.args.get('url')
+    quality = request.args.get('quality', '720p')
+    
+    if download_status['status'] == 'downloading':
+        return jsonify({"error": "একটি ডাউনলোড ইতিমধ্যে চলছে!"}), 400
         
-        document.getElementById(sectionId + 'Section').classList.add('active');
-        if(event) {
-            event.currentTarget.classList.add('active');
-        }
+    download_status = {"status": "downloading", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
+    threading.Thread(target=run_download, args=(video_url, quality)).start()
+    return jsonify({"message": "Download started"})
 
-        if(sectionId === 'downloads') {
-            loadDownloads();
-        }
-    }
+@app.route('/progress')
+def progress():
+    return jsonify(download_status)
 
-    function handleSearch() {
-        const query = document.getElementById('searchInput').value;
-        if(!query) return;
+@app.route('/cancel_download')
+def cancel_download():
+    global download_status
+    cancel_event.set()
+    download_status['status'] = 'cancelled'
+    return jsonify({"message": "Download cancellation requested"})
 
-        if(query.includes('youtube.com') || query.includes('youtu.be')) {
-            switchSection('playing');
-            fetchVideoInfo(query);
-        } else {
-            switchSection('home');
-            searchVideos(query);
-        }
-    }
+@app.route('/play_file/<path:filename>')
+def play_file(filename):
+    response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
+    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+    response.headers["Content-Type"] = "application/octet-stream"
+    return response
 
-    function searchVideos(query) {
-        const resultsDiv = document.getElementById('videoResults');
-        resultsDiv.innerHTML = '<div class="text-center w-100 mt-5"><div class="spinner-border text-danger"></div></div>';
-        
-        fetch(`/search?q=${encodeURIComponent(query)}`)
-            .then(res => res.json())
-            .then(data => {
-                resultsDiv.innerHTML = '';
-                if(data.videos.length === 0) {
-                    resultsDiv.innerHTML = '<p class="text-center w-100">No videos found.</p>';
-                    return;
-                }
-                data.videos.forEach(v => {
-                    resultsDiv.innerHTML += `
-                        <div class="col-md-4 col-sm-6 col-12">
-                            <div class="v-card" onclick="switchSection('playing'); fetchVideoInfo('${v.url}')">
-                                <img src="${v.thumbnail}">
-                                <div class="v-title">${v.title}</div>
-                            </div>
-                        </div>`;
-                });
-            });
-    }
+@app.route('/get_downloads')
+def get_downloads():
+    if os.path.exists(DOWNLOAD_FOLDER):
+        files = [f for f in os.listdir(DOWNLOAD_FOLDER) if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, f))]
+    else:
+        files = []
+    return jsonify(files)
 
-    function fetchVideoInfo(url) {
-        const playerContainer = document.getElementById('playerContainer');
-        const optionsDiv = document.getElementById('downloadOptions');
-        playerContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-light"></div><p>Fetching video info...</p></div>';
-        optionsDiv.innerHTML = '';
-
-        const formData = new FormData();
-        formData.append('url', url);
-
-        fetch('/get_info', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if(data.error) {
-                    playerContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                    return;
-                }
-
-                playerContainer.innerHTML = `
-                    <h6 class="mb-2 text-wrap">${data.title}</h6>
-                    <video controls autoplay src="${data.video_url}"></video>`;
-
-                optionsDiv.innerHTML = `
-                    <div class="d-flex justify-content-center flex-wrap mt-2">
-                        <button class="btn btn-primary download-btn px-3 py-2" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
-                        <button class="btn btn-info download-btn px-3 py-2 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
-                        <button class="btn btn-warning download-btn px-3 py-2 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
-                    </div>`;
-            });
-    }
-
-    function triggerDownload(url, quality) {
-        if(isDownloading) {
-            alert("একটি دانلود অলরেডি চলছে!");
-            return;
-        }
-
-        document.getElementById('progressBox').style.display = 'block';
-        const bar = document.getElementById('progressBar');
-        bar.style.width = '0%';
-        bar.innerText = '0%';
-        isDownloading = true;
-
-        fetch(`/start_download?url=${encodeURIComponent(url)}&quality=${quality}`)
-            .then(res => res.json())
-            .then(data => {
-                if(data.error) {
-                    alert(data.error);
-                    isDownloading = false;
-                    document.getElementById('progressBox').style.display = 'none';
-                    return;
-                }
-                intervalId = setInterval(checkProgress, 1000);
-            });
-    }
-
-    function checkProgress() {
-        fetch('/progress')
-            .then(res => res.json())
-            .then(data => {
-                const bar = document.getElementById('progressBar');
-                const status = document.getElementById('progressStatus');
-                
-                status.innerText = data.status.toUpperCase();
-                bar.style.width = data.progress + '%';
-                bar.innerText = data.progress + '%';
-                document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt"></i> ${data.speed}`;
-                document.getElementById('downloadEta').innerHTML = `<i class="fas fa-clock"></i> ${data.eta}`;
-
-                if(data.status === 'completed' && data.progress >= 100) {
-                    clearInterval(intervalId);
-                    isDownloading = false;
-                    status.innerText = "COMPLETED!";
-                    
-                    // সার্ভার থেকে ব্রাউজারে রিয়েল ডাউনলোড পুশ করার মেইন মেথড
-                    setTimeout(() => {
-                        window.location.href = `/play_file/${data.filename}`;
-                    }, 1000);
-                } 
-                
-                if(data.status === 'cancelled' || data.status === 'error') {
-                    clearInterval(intervalId);
-                    isDownloading = false;
-                }
-            });
-    }
-
-    function cancelDownload() {
-        fetch('/cancel_download')
-            .then(res => res.json())
-            .then(() => {
-                clearInterval(intervalId);
-                isDownloading = false;
-                document.getElementById('progressStatus').innerText = "CANCELLED";
-                document.getElementById('progressBar').style.width = '0%';
-            });
-    }
-
-    function loadDownloads() {
-        const listDiv = document.getElementById('downloadsList');
-        listDiv.innerHTML = '<p class="text-muted text-center">Loading files...</p>';
-
-        fetch('/get_downloads')
-            .then(res => res.json())
-            .then(files => {
-                listDiv.innerHTML = '';
-                if(files.length === 0) {
-                    listDiv.innerHTML = '<p class="text-muted text-center mt-4">No downloads found.</p>';
-                    return;
-                }
-                files.forEach(f => {
-                    listDiv.innerHTML += `
-                        <div class="list-item">
-                            <div class="text-truncate fw-bold small" style="max-width: 75%;">${f}</div>
-                            <a href="/play_file/${f}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
-                        </div>`;
-                });
-            });
-    }
-</script>
-</body>
-    </html>
-                                                                                                      
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
+    
