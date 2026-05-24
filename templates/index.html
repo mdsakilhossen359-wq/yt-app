@@ -9,7 +9,6 @@
     <style>
         :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
         
-        /* পুরো স্ক্রিনকে লক করে কন্টেন্ট স্ক্রোলিং আলাদা করা হয়েছে */
         html, body { 
             background: var(--dark); 
             color: white; 
@@ -44,18 +43,18 @@
         /* প্রধান স্ক্রোলযোগ্য এরিয়া (ভিডিও লিস্ট শুধুমাত্র এখানে স্ক্রোল হবে) */
         .main-content {
             position: absolute;
-            top: 70px; /* প্লেয়ার চালু না থাকলে স্বাভাবিক টপ মার্জিন */
-            bottom: 70px; /* বটম ন্যাভবারের জন্য স্পেস */
+            top: 75px; 
+            bottom: 70px; 
             left: 0;
             width: 100%;
-            overflow-y: auto; /* এখানে স্ক্রোলিং সচল করা হয়েছে */
+            overflow-y: auto; 
             padding: 10px 15px;
             -webkit-overflow-scrolling: touch;
         }
 
-        /* প্লেয়ার চালু হলে নিচের লিস্টের পজিশন অটোমেটিক অ্যাডজাস্ট করার জন্য ক্লাস */
+        /* প্লেয়ার চালু হলে নিচের লিস্টের পজিশন অটোমেটিক অ্যাডজাস্ট হবে */
         .main-content.player-active {
-            top: 350px; /* প্লেয়ার ওপেন হলে লিস্ট নিচে নেমে যাবে কিন্তু স্ক্রোল হবে */
+            top: 350px; 
         }
 
         .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; cursor: pointer; }
@@ -148,7 +147,7 @@
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         
         document.getElementById(sectionId + 'Section').classList.add('active');
-        document.getElementById('btn-' + sectionId).mathbf{classList}.add('active');
+        document.getElementById('btn-' + sectionId).classList.add('active');
 
         if(sectionId === 'downloads') {
             loadDownloads();
@@ -188,6 +187,8 @@
                             </div>
                         </div>`;
                 });
+            }).catch(err => {
+                resultsDiv.innerHTML = '<p class="text-center w-100 text-danger">Failed to load videos.</p>';
             });
     }
 
@@ -198,8 +199,8 @@
         const mainContent = document.getElementById('mainContent');
         
         playerSection.style.display = 'block';
-        mainContent.classList.add('player-active'); // ভিডিও লিস্টের মার্জিন পুশ ডাউন করা হলো
-        mainContent.scrollTop = 0; // লিস্ট স্ক্রোল ওপরে সেট হবে
+        mainContent.classList.add('player-active'); 
+        mainContent.scrollTop = 0; 
         
         playerContainer.innerHTML = '<div class="text-center p-3"><div class="spinner-border text-light spinner-border-sm"></div><p class="mt-1 small mb-0">Loading stream link...</p></div>';
         optionsDiv.innerHTML = '';
