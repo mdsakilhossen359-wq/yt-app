@@ -11,7 +11,6 @@ YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-# ডাউনলোডের লাইভ স্ট্যাটাস ট্র্যাকিং স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -49,11 +48,10 @@ def run_download(video_url, quality):
         'mp3': 'bestaudio/best'
     }
 
-    # 'restrictfilenames': True ব্যবহার করা হয়েছে যাতে নামের ভেতরের সব বাংলা ও স্পেশাল ক্যারেক্টার অটোমেটিক রিমুভ হয়ে যায়
     ydl_opts = {
         'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'restrictfilenames': True,
+        'restrictfilenames': True,  # ফাইলের নামকে উইন্ডোজ/মোবাইল ফ্রেন্ডলি করার জন্য
         'progress_hooks': [ytdl_hook],
         'quiet': True
     }
@@ -137,7 +135,7 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ফোনে জোরপূর্বক ফাইল ডাউনলোড করানোর রুট
+# ফোনে ১ সেকেন্ডে ফাইল সেভ বা ডাউনলোডের জন্য ফিক্সড রুট
 @app.route('/play_file/<path:filename>')
 def play_file(filename):
     response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
@@ -156,4 +154,3 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-    
