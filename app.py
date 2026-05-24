@@ -22,11 +22,10 @@ download_status = {
 }
 cancel_event = threading.Event()
 
-# ফাইলের নাম থেকে স্পেশাল ক্যারেক্টার ও বাংলা ব্র্যাকেট ক্লিন করার ফাংশন
+# ফাইলের নাম থেকে স্পেশাল ক্যারেক্টার ক্লিন করার ফাংশন (যাতে মোবাইলে সহজে ডাউনলোড হয়)
 def clean_filename(name):
     # শুধু ইংরেজি অক্ষর, সংখ্যা, ডট এবং হাইফেন রাখবে, বাকি সব বাদ দেবে
     clean_name = re.sub(r'[^a-zA-Z0-9._-]', '_', name)
-    # পরপর একাধিক আন্ডারস্কোর থাকলে একটা করে দেবে
     clean_name = re.sub(r'_+', '_', clean_name)
     return clean_name
 
@@ -75,7 +74,7 @@ def run_download(video_url, quality):
             if quality == 'mp3':
                 original_filename = original_filename.rsplit('.', 1)[0] + '.mp3'
             
-            # ফাইলের অদ্ভুত নাম পরিবর্তন করে একদম ফ্রেশ নাম দেওয়া
+            # ফাইলের অদ্ভুত নাম পরিবর্তন করে ক্লিন ইংলিশ নাম দেওয়া
             base_name = os.path.basename(original_filename)
             cleaned_base_name = clean_filename(base_name)
             
@@ -87,6 +86,7 @@ def run_download(video_url, quality):
 
             download_status['filename'] = cleaned_base_name
             download_status['status'] = 'completed'
+            download_status['progress'] = 100
     except Exception as e:
         if "cancelled" in str(e):
             download_status['status'] = 'cancelled'
@@ -129,6 +129,7 @@ def get_info():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+# বাটন ক্লিক করলে ডাউনলোড শুরু করার মেইন রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -142,10 +143,12 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
+# ফ্রন্টএন্ড থেকে লাইভ প্রোগ্রেস ও ফাইল রেডি কি না চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
+# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -153,11 +156,10 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ফোনে ১০০% জোরপূর্বক ডাউনলোড করানোর জন্য শক্তিশালী রুট
+# এই রুটটিই জোর করে ফাইলটি আপনার ফোনের মেমোরিতে ডাউনলোড করাবে
 @app.route('/play_file/<filename>')
 def play_file(filename):
     response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
-    # ব্রাউজারকে বাধ্য করবে ফাইলটি ফোনে সেভ করতে
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     response.headers["Content-Type"] = "application/octet-stream"
     return response
@@ -173,4 +175,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-            
+    
