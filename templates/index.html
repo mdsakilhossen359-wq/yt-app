@@ -35,227 +35,222 @@
     </div>
 </div>
 
-<div class="container mt-2">
-    <div id="home-sec" class="section active">
-        <div id="video-feed" class="row row-cols-1 row-cols-md-2 row-cols-lg-3"></div>
-        <div id="loader" class="text-center p-3"><div class="spinner-border text-danger"></div></div>
+<div class="container mt-3">
+    <!-- হোম সেকশন -->
+    <div id="homeSection" class="section active">
+        <div id="videoResults" class="row"></div>
     </div>
 
-    <div id="playing-sec" class="section">
-        <video id="mainVideo" controls autoplay></video>
-        <div class="p-3 mt-2 bg-dark rounded shadow">
-            <h6 id="playTitle">No Video Selected</h6>
-            <div class="d-flex flex-wrap mt-3">
-                <button onclick="startDownload('1080p')" class="btn btn-primary download-btn">1080p MP4</button>
-                <button onclick="startDownload('720p')" class="btn btn-info download-btn">720p MP4</button>
-                <button onclick="startDownload('mp3')" class="btn btn-warning download-btn">MP3 Audio</button>
+    <!-- প্লেয়িং সেকশন -->
+    <div id="playingSection" class="section">
+        <div id="playerContainer" class="mb-3"></div>
+        <div id="downloadOptions" class="p-3 bg-card rounded"></div>
+        
+        <!-- প্রোগ্রেস ট্র্যাকিং বক্স -->
+        <div id="progressBox" class="progress-box">
+            <div class="d-flex justify-content-between mb-1">
+                <span id="progressStatus" class="fw-bold text-warning">Idle</span>
+                <button class="btn btn-sm btn-danger py-0" onclick="cancelDownload()">Cancel</button>
             </div>
-
-            <div id="progressBox" class="progress-box">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span id="downloadStatusText" class="text-warning small">Downloading...</span>
-                    <button onclick="cancelDownload()" class="btn btn-sm btn-danger py-0 px-2 rounded-pill" style="font-size:10px;">Cancel</button>
-                </div>
-                <div class="progress mb-2" style="height: 10px;">
-                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-danger" role="progressbar" style="width: 0%"></div>
-                </div>
-                <div class="d-flex justify-content-between text-muted" style="font-size: 11px;">
-                    <span id="downloadSpeed"><i class="fas fa-bolt me-1"></i>0 KB/s</span>
-                    <span id="downloadETA"><i class="fas fa-clock me-1"></i>00:00</span>
-                </div>
-                <div id="playOfflineBox" class="mt-3 text-center" style="display:none;">
-                    <button id="playOfflineBtn" class="btn btn-success btn-sm w-100 rounded-pill"><i class="fas fa-play-circle me-1"></i>ডাউনলোড করা ফাইলটি প্লে করুন</button>
-                </div>
+            <div class="progress mb-2" style="height: 10px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="d-flex justify-content-between text-muted small">
+                <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
+                <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
             </div>
         </div>
     </div>
 
-    <div id="history-sec" class="section">
-        <h5 class="mb-3"><i class="fas fa-history me-2"></i>Play History</h5>
-        <div id="history-list"></div>
+    <!-- হিস্ট্রি সেকশন -->
+    <div id="historySection" class="section">
+        <h5 class="mb-3"><i class="fas fa-history text-secondary"></i> Search History</h5>
+        <div id="historyList"></div>
     </div>
 
-    <div id="download-sec" class="section">
-        <h5 class="mb-3"><i class="fas fa-folder-open me-2"></i>My Downloads</h5>
-        <div id="offlinePlayerContainer" class="mb-3 p-2 bg-black rounded" style="display:none;">
-            <div class="d-flex justify-content-between align-items-center text-muted mb-1 px-1" style="font-size:12px;">
-                <span id="offlinePlayingTitle">Playing Offline File</span>
-                <button onclick="closeOfflinePlayer()" class="btn btn-sm text-white p-0"><i class="fas fa-times"></i></button>
-            </div>
-            <div id="playerWrapper"></div>
-        </div>
-        <div id="download-list"></div>
+    <!-- ডাউনলোডস সেকশন -->
+    <div id="downloadsSection" class="section">
+        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads (Click to Save on Phone)</h5>
+        <div id="downloadsList"></div>
     </div>
 </div>
 
+<!-- বটম নেভিগেশন বার -->
 <div class="bottom-nav">
-    <button class="nav-btn active" onclick="showSection('home')"><i class="fas fa-home"></i>Home</button>
-    <button class="nav-btn" onclick="showSection('playing')"><i class="fas fa-play"></i>Playing</button>
-    <button class="nav-btn" onclick="showSection('history')"><i class="fas fa-history"></i>History</button>
-    <button class="nav-btn" onclick="showSection('download')"><i class="fas fa-download"></i>Downloads</button>
+    <button class="nav-btn active" onclick="switchSection('home')"><i class="fas fa-home"></i>Home</button>
+    <button class="nav-btn" onclick="switchSection('playing')"><i class="fas fa-play-circle"></i>Playing</button>
+    <button class="nav-btn" onclick="switchSection('history')"><i class="fas fa-history"></i>History</button>
+    <button class="nav-btn" onclick="switchSection('downloads')"><i class="fas fa-download"></i>Downloads</button>
 </div>
 
 <script>
-    let nextPageToken = "";
-    let currentQuery = "Bangla new songs";
-    let playingUrl = "";
-    let progressInterval;
+    let intervalId = null;
+    let isDownloading = false;
 
-    async function loadVideos(q, append = false) {
-        document.getElementById('loader').style.display = "block";
-        const res = await fetch(`/search?q=${q}&pageToken=${nextPageToken}`);
-        const data = await res.json();
-        
-        const feed = document.getElementById('video-feed');
-        if (!append) feed.innerHTML = "";
-        data.videos.forEach(v => {
-            feed.innerHTML += `
-                <div class="col">
-                    <div class="v-card" onclick="playThis('${v.url}', '${v.title.replace(/'/g, "")}')">
-                        <img src="${v.thumbnail}">
-                        <div class="v-title">${v.title}</div>
-                    </div>
-                </div>`;
-        });
-        nextPageToken = data.nextPageToken;
-        document.getElementById('loader').style.display = "none";
-    }
-
-    async function playThis(url, title) {
-        playingUrl = url;
-        showSection('playing');
-        document.getElementById('playTitle').innerText = "Loading details...";
-        
-        const fd = new FormData();
-        fd.append('url', url);
-        const res = await fetch('/get_info', {method: 'POST', body: fd});
-        const data = await res.json();
-        
-        document.getElementById('mainVideo').src = data.video_url;
-        document.getElementById('playTitle').innerText = data.title;
-        addToHistory(data.title);
-        document.getElementById('progressBox').style.display = "none";
-    }
-
-    function showSection(name) {
+    function switchSection(sectionId) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         
-        document.getElementById(name + '-sec').classList.add('active');
-        if(event && event.currentTarget) event.currentTarget.classList.add('active');
-        
-        if(name === 'download') loadDownloadFiles();
-    }
+        document.getElementById(sectionId + 'Section').classList.add('active');
+        event.currentTarget.classList.add('active');
 
-    async function startDownload(q) {
-        document.getElementById('progressBox').style.display = "block";
-        document.getElementById('playOfflineBox').style.display = "none";
-        document.getElementById('downloadStatusText').innerText = "Initializing...";
-        
-        const res = await fetch(`/start_download?url=${encodeURIComponent(playingUrl)}&quality=${q}`);
-        const data = await res.json();
-        
-        if(data.error) {
-            alert(data.error);
-            return;
+        if(sectionId === 'downloads') {
+            loadDownloads();
         }
-
-        clearInterval(progressInterval);
-        progressInterval = setInterval(trackProgress, 1000);
-    }
-
-    async function trackProgress() {
-        const res = await fetch('/progress');
-        const data = await res.json();
-        
-        if (data.status === 'downloading') {
-            document.getElementById('downloadStatusText').innerText = `Downloading... (${data.progress}%)`;
-            document.getElementById('progressBar').style.width = `${data.progress}%`;
-            document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt me-1"></i>${data.speed}`;
-            document.getElementById('downloadETA').innerHTML = `<i class="fas fa-clock me-1"></i>${data.eta}`;
-        } 
-        else if (data.status === 'completed') {
-            clearInterval(progressInterval);
-            document.getElementById('downloadStatusText').innerText = "Successful!";
-            document.getElementById('progressBar').style.width = "100%";
-            
-            const playBtn = document.getElementById('playOfflineBtn');
-            playBtn.onclick = () => playOfflineFile(data.filename);
-            document.getElementById('playOfflineBox').style.display = "block";
-        } 
-        else if (data.status === 'cancelled') {
-            clearInterval(progressInterval);
-            document.getElementById('downloadStatusText').innerText = "Cancelled!";
-            document.getElementById('progressBar').style.width = "0%";
-            alert("ডাউনলোড বাতিল করা হয়েছে।");
-        } 
-        else if (data.status === 'error') {
-            clearInterval(progressInterval);
-            document.getElementById('downloadStatusText').innerText = "Error!";
-            alert("ডাউনলোড ব্যর্থ হয়েছে।");
-        }
-    }
-
-    async function cancelDownload() {
-        if(confirm("ডাউনলোড বাতিল করতে চান?")) {
-            await fetch('/cancel_download');
-        }
-    }
-
-    function playOfflineFile(filename) {
-        showSection('download');
-        document.getElementById('offlinePlayerContainer').style.display = "block";
-        document.getElementById('offlinePlayingTitle').innerText = filename;
-        
-        const wrapper = document.getElementById('playerWrapper');
-        if (filename.endsWith('.mp3')) {
-            wrapper.innerHTML = `<audio src="/play_file/${encodeURIComponent(filename)}" controls autoplay></audio>`;
-        } else {
-            wrapper.innerHTML = `<video src="/play_file/${encodeURIComponent(filename)}" controls autoplay></video>`;
-        }
-    }
-
-    function closeOfflinePlayer() {
-        document.getElementById('offlinePlayerContainer').style.display = "none";
-        document.getElementById('playerWrapper').innerHTML = "";
-    }
-
-    async function loadDownloadFiles() {
-        const res = await fetch('/get_downloads');
-        const files = await res.json();
-        const list = document.getElementById('download-list');
-        list.innerHTML = files.length ? "" : "<p class='text-muted'>কোন ফাইল ডাউনলোড করা হয়নি।</p>";
-        files.forEach(f => {
-            list.innerHTML += `
-                <div class="list-item">
-                    <div>
-                        <i class="${f.endsWith('.mp3') ? 'fas fa-file-audio text-warning' : 'fas fa-file-video text-info'} me-2"></i>
-                        <span>${f}</span>
-                    </div>
-                    <button onclick="playOfflineFile('${f.replace(/'/g, "\\'")}')" class="btn btn-sm btn-success rounded-circle"><i class="fas fa-play"></i></button>
-                </div>`;
-        });
-    }
-
-    function addToHistory(title) {
-        const list = document.getElementById('history-list');
-        list.innerHTML = `<div class="list-item"><i class="fas fa-check-circle text-success"></i> ${title}</div>` + list.innerHTML;
     }
 
     function handleSearch() {
-        const val = document.getElementById('searchInput').value;
-        if(val.includes('http')) playThis(val, "Link Video");
-        else { currentQuery = val; nextPageToken = ""; loadVideos(val); showSection('home'); }
+        const query = document.getElementById('searchInput').value;
+        if(!query) return;
+
+        // যদি ইউজার সরাসরি ইউটিউব লিঙ্ক পেস্ট করে
+        if(query.includes('youtube.com') || query.includes('youtu.be')) {
+            switchSection('playing');
+            fetchVideoInfo(query);
+        } else {
+            switchSection('home');
+            searchVideos(query);
+        }
     }
 
-    window.onscroll = () => {
-        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
-            if(document.getElementById('home-sec').classList.contains('active')) loadVideos(currentQuery, true);
-        }
-    };
+    function searchVideos(query) {
+        const resultsDiv = document.getElementById('videoResults');
+        resultsDiv.innerHTML = '<div class="text-center w-100 mt-5"><div class="spinner-border text-danger"></div></div>';
+        
+        fetch(`/search?q=${encodeURIComponent(query)}`)
+            .then(res => res.json())
+            .then(data => {
+                resultsDiv.innerHTML = '';
+                data.videos.forEach(v => {
+                    resultsDiv.innerHTML += `
+                        <div class="col-md-4 col-sm-6">
+                            <div class="v-card" onclick="switchSection('playing'); fetchVideoInfo('${v.url}')">
+                                <img src="${v.thumbnail}">
+                                <div class="v-title">${v.title}</div>
+                            </div>
+                        </div>`;
+                });
+            });
+    }
 
-    window.onload = () => loadVideos(currentQuery);
+    function fetchVideoInfo(url) {
+        const playerContainer = document.getElementById('playerContainer');
+        const optionsDiv = document.getElementById('downloadOptions');
+        playerContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-light"></div><p>Fetching link...</p></div>';
+        optionsDiv.innerHTML = '';
+
+        const formData = new FormData();
+        formData.append('url', url);
+
+        fetch('/get_info', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.error) {
+                    playerContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+
+                playerContainer.innerHTML = `
+                    <h6 class="mb-2 text-wrap">${data.title}</h6>
+                    <video controls autoplay src="${data.video_url}"></video>`;
+
+                optionsDiv.innerHTML = `
+                    <div class="d-flex justify-content-center flex-wrap mt-2">
+                        <button class="btn btn-primary download-btn px-3" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
+                        <button class="btn btn-info download-btn px-3 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
+                        <button class="btn btn-warning download-btn px-3 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
+                    </div>`;
+            });
+    }
+
+    function triggerDownload(url, quality) {
+        if(isDownloading) {
+            alert("একটি ডাউনলোড অলরেডি চলছে! দয়া করে অপেক্ষা করুন।");
+            return;
+        }
+
+        document.getElementById('progressBox').style.display = 'block';
+        isDownloading = true;
+
+        fetch(`/start_download?url=${encodeURIComponent(url)}&quality=${quality}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.error) {
+                    alert(data.error);
+                    isDownloading = false;
+                    document.getElementById('progressBox').style.display = 'none';
+                    return;
+                }
+                // প্রোগ্রেস বার চেক করা শুরু
+                intervalId = setInterval(checkProgress, 1000);
+            });
+    }
+
+    function checkProgress() {
+        fetch('/progress')
+            .then(res => res.json())
+            .then(data => {
+                const bar = document.getElementById('progressBar');
+                const status = document.getElementById('progressStatus');
+                
+                status.innerText = data.status.toUpperCase() + '!';
+                bar.style.width = data.progress + '%';
+                bar.innerText = data.progress + '%';
+                document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt"></i> ${data.speed}`;
+                document.getElementById('downloadEta').innerHTML = `<i class="fas fa-clock"></i> ${data.eta}`;
+
+                // ডাউনলোড সম্পূর্ণ হলে ম্যাজিক: সরাসরি ফোনে ফাইল পুশ করা
+                if(data.status === 'completed' && data.progress >= 100) {
+                    clearInterval(intervalId);
+                    isDownloading = false;
+                    status.innerText = "Completed!";
+                    status.className = "fw-bold text-success";
+                    
+                    // এখানে সরাসরি পাইথনের প্লে_ফাইল রুটে কল দিয়ে ফোনে অটোমেটিক ডাউনলোড নামানো হচ্ছে
+                    window.location.href = `/play_file/${encodeURIComponent(data.filename)}`;
+                } 
+                
+                if(data.status === 'cancelled' || data.status === 'error') {
+                    clearInterval(intervalId);
+                    isDownloading = false;
+                    status.innerText = data.status === 'cancelled' ? "Cancelled!" : "Error occurred!";
+                    status.className = "fw-bold text-danger";
+                }
+            });
+    }
+
+    function cancelDownload() {
+        fetch('/cancel_download')
+            .then(res => res.json())
+            .then(() => {
+                clearInterval(intervalId);
+                isDownloading = false;
+                document.getElementById('progressStatus').innerText = "Cancelled!";
+                document.getElementById('progressBar').style.width = '0%';
+            });
+    }
+
+    function loadDownloads() {
+        const listDiv = document.getElementById('downloadsList');
+        listDiv.innerHTML = '<p class="text-muted text-center">Loading files...</p>';
+
+        fetch('/get_downloads')
+            .then(res => res.json())
+            .then(files => {
+                listDiv.innerHTML = '';
+                if(files.length === 0) {
+                    listDiv.innerHTML = '<p class="text-muted text-center mt-4">No downloads found in server folder.</p>';
+                    return;
+                }
+                files.forEach(f => {
+                    listDiv.innerHTML += `
+                        <div class="list-item">
+                            <div class="text-truncate fw-bold small" style="max-width: 75%;">${f}</div>
+                            <a href="/play_file/${encodeURIComponent(f)}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
+                        </div>`;
+                });
+            });
+    }
 </script>
 </body>
 </html>
-
