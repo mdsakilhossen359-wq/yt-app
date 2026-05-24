@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
+from flask import Flask, render_template, request, send_from_directory, jsonify, make_response
 import yt_dlp
 import os
 import threading
@@ -101,19 +101,17 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # ভিডিও প্লে না হওয়ার সমস্যা সমাধানের জন্য এক্সট্রা আর্গুমেণ্ট যুক্ত করা হয়েছে
     ydl_opts = {
         'quiet': True, 
         'noplaylist': True,
         'format': 'best[ext=mp4]/best',
-        'extractor_args': {'youtube': {'player_client': ['ios', 'android']}} # ব্লক এড়াতে ios/android মক ক্লায়েন্ট
+        'extractor_args': {'youtube': {'player_client': ['ios', 'android']}}
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
             
-            # সরাসরি ব্রাউজারে প্লে হওয়ার মতো ভ্যালিড ভিডিও লিংক খোঁজা হচ্ছে
             play_url = None
             for f in reversed(formats):
                 if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
@@ -127,7 +125,6 @@ def get_info():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -141,12 +138,10 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
-# ফ্রন্টএন্ড থেকে লাইভ স্ট্যাটাস চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
-# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -154,7 +149,6 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ডাউনলোড করা ফাইল সরাসরি ব্রাউজারে প্লে করার রুট
 @app.route('/play_file/<filename>')
 def play_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename)
