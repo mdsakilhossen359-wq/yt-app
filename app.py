@@ -3,7 +3,6 @@ import yt_dlp
 import os
 import threading
 import requests
-import re
 
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
@@ -21,13 +20,6 @@ download_status = {
     "filename": ""
 }
 cancel_event = threading.Event()
-
-# ফাইলের নাম থেকে স্পেশাল ক্যারেক্টার ক্লিন করার ফাংশন (যাতে মোবাইলে সহজে ডাউনলোড হয়)
-def clean_filename(name):
-    # শুধু ইংরেজি অক্ষর, সংখ্যা, ডট এবং হাইফেন রাখবে, বাকি সব বাদ দেবে
-    clean_name = re.sub(r'[^a-zA-Z0-9._-]', '_', name)
-    clean_name = re.sub(r'_+', '_', clean_name)
-    return clean_name
 
 def ytdl_hook(d):
     global download_status
@@ -57,9 +49,11 @@ def run_download(video_url, quality):
         'mp3': 'bestaudio/best'
     }
 
+    # 'restrictfilenames': True ব্যবহার করা হয়েছে যাতে নামের ভেতরের সব বাংলা ও স্পেশাল ক্যারেক্টার অটোমেটিক রিমুভ হয়ে যায়
     ydl_opts = {
         'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
+        'restrictfilenames': True,
         'progress_hooks': [ytdl_hook],
         'quiet': True
     }
@@ -70,21 +64,11 @@ def run_download(video_url, quality):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
-            original_filename = ydl.prepare_filename(info)
+            filename = ydl.prepare_filename(info)
             if quality == 'mp3':
-                original_filename = original_filename.rsplit('.', 1)[0] + '.mp3'
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
             
-            # ফাইলের অদ্ভুত নাম পরিবর্তন করে ক্লিন ইংলিশ নাম দেওয়া
-            base_name = os.path.basename(original_filename)
-            cleaned_base_name = clean_filename(base_name)
-            
-            old_path = os.path.join(DOWNLOAD_FOLDER, base_name)
-            new_path = os.path.join(DOWNLOAD_FOLDER, cleaned_base_name)
-            
-            if os.path.exists(old_path) and old_path != new_path:
-                os.rename(old_path, new_path)
-
-            download_status['filename'] = cleaned_base_name
+            download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
             download_status['progress'] = 100
     except Exception as e:
@@ -129,7 +113,6 @@ def get_info():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# বাটন ক্লিক করলে ডাউনলোড শুরু করার মেইন রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -143,12 +126,10 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
-# ফ্রন্টএন্ড থেকে লাইভ প্রোগ্রেস ও ফাইল রেডি কি না চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
-# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -156,8 +137,8 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# এই রুটটিই জোর করে ফাইলটি আপনার ফোনের মেমোরিতে ডাউনলোড করাবে
-@app.route('/play_file/<filename>')
+# ফোনে জোরপূর্বক ফাইল ডাউনলোড করানোর রুট
+@app.route('/play_file/<path:filename>')
 def play_file(filename):
     response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
