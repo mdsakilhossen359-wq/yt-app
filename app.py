@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
+from flask import Flask, render_template, request, send_file, jsonify, send_from_directory, make_response
 import yt_dlp
 import os
 import threading
 import requests
+import re
 
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
@@ -20,6 +21,14 @@ download_status = {
     "filename": ""
 }
 cancel_event = threading.Event()
+
+# ফাইলের নাম থেকে স্পেশাল ক্যারেক্টার ও বাংলা ব্র্যাকেট ক্লিন করার ফাংশন
+def clean_filename(name):
+    # শুধু ইংরেজি অক্ষর, সংখ্যা, ডট এবং হাইফেন রাখবে, বাকি সব বাদ দেবে
+    clean_name = re.sub(r'[^a-zA-Z0-9._-]', '_', name)
+    # পরপর একাধিক আন্ডারস্কোর থাকলে একটা করে দেবে
+    clean_name = re.sub(r'_+', '_', clean_name)
+    return clean_name
 
 def ytdl_hook(d):
     global download_status
@@ -62,10 +71,21 @@ def run_download(video_url, quality):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
-            filename = ydl.prepare_filename(info)
+            original_filename = ydl.prepare_filename(info)
             if quality == 'mp3':
-                filename = filename.rsplit('.', 1)[0] + '.mp3'
-            download_status['filename'] = os.path.basename(filename)
+                original_filename = original_filename.rsplit('.', 1)[0] + '.mp3'
+            
+            # ফাইলের অদ্ভুত নাম পরিবর্তন করে একদম ফ্রেশ নাম দেওয়া
+            base_name = os.path.basename(original_filename)
+            cleaned_base_name = clean_filename(base_name)
+            
+            old_path = os.path.join(DOWNLOAD_FOLDER, base_name)
+            new_path = os.path.join(DOWNLOAD_FOLDER, cleaned_base_name)
+            
+            if os.path.exists(old_path) and old_path != new_path:
+                os.rename(old_path, new_path)
+
+            download_status['filename'] = cleaned_base_name
             download_status['status'] = 'completed'
     except Exception as e:
         if "cancelled" in str(e):
@@ -109,7 +129,6 @@ def get_info():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -123,12 +142,10 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
-# ফ্রন্টএন্ড থেকে লাইভ স্ট্যাটাস চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
-# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -136,18 +153,24 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ডাউনলোড করা ফাইল সরাসরি ফোনে সেভ করার রুট (as_attachment=True যোগ করা হয়েছে)
+# ফোনে ১০০% জোরপূর্বক ডাউনলোড করানোর জন্য শক্তিশালী রুট
 @app.route('/play_file/<filename>')
 def play_file(filename):
-    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
+    response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
+    # ব্রাউজারকে বাধ্য করবে ফাইলটি ফোনে সেভ করতে
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Type"] = "application/octet-stream"
+    return response
 
 @app.route('/get_downloads')
 def get_downloads():
-    files = os.listdir(DOWNLOAD_FOLDER)
+    if os.path.exists(DOWNLOAD_FOLDER):
+        files = os.listdir(DOWNLOAD_FOLDER)
+    else:
+        files = []
     return jsonify(files)
 
 if __name__ == '__main__':
-    # রেন্ডার সার্ভার ও লোকাল পোর্টের কম্বিনেশন সেটিংস
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-    
+            
