@@ -9,26 +9,74 @@
     <style>
         :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
         body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; }
-        .header { position: sticky; top: 0; z-index: 1000; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(10px); padding: 15px; border-bottom: 1px solid #333; }
+        
+        /* সার্চ বার */
+        .header { background: #121212; padding: 15px; border-bottom: 1px solid #222; }
         .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
+        
+        /* ভিডিও প্লেয়ার থাকবে স্ক্রিনের ওপরে ফিক্সড বা স্টিকি */
+        .sticky-player-wrapper {
+            position: sticky;
+            top: 0;
+            z-index: 1050;
+            background: #121212;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+        
+        #homePlayerSection { 
+            background: #1a1a1a; 
+            padding: 10px; 
+            border-radius: 12px; 
+            display: none; 
+            border: 1px solid #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+        }
+        
+        /* আইফ্রেম বা ভিডিও প্লেয়ার সাইজ */
+        .iframe-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            height: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+        }
+        .iframe-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
+        /* স্ক্রোলযোগ্য নিচের ভিডিও লিস্ট */
+        .scrollable-content {
+            margin-top: 10px;
+        }
+
         .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
         .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
+        
+        /* বটম নেভিগেশন বার */
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
         .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
         .nav-btn.active { color: var(--primary); }
         .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
+        
         .section { display: none; padding-top: 10px; }
         .section.active { display: block; }
-        video { width: 100%; border-radius: 10px; background: #000; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
         .download-btn { border-radius: 50px; font-weight: bold; font-size: 12px; margin: 2px; }
         .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .progress-box { background: #222; padding: 15px; border-radius: 10px; margin-top: 15px; display: none; }
-        #homePlayerSection { background: #1a1a1a; padding: 10px; border-radius: 12px; margin-bottom: 20px; display: none; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
+<!-- সার্চ বার -->
 <div class="header">
     <div class="input-group">
         <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
@@ -36,32 +84,37 @@
     </div>
 </div>
 
-<div class="container mt-3">
+<div class="container mt-2">
     <!-- Home Section -->
     <div id="homeSection" class="section active">
-        <!-- প্লেয়ার ও ডাউনলোডার অপশন হোমের একদম ওপরে থাকবে -->
-        <div id="homePlayerSection">
-            <div id="playerContainer" class="mb-2"></div>
-            <div id="downloadOptions" class="text-center mb-2"></div>
-            
-            <!-- প্রোগ্রেস বার -->
-            <div id="progressBox" class="progress-box">
-                <div class="d-flex justify-content-between mb-1">
-                    <span id="progressStatus" class="fw-bold text-warning">Idle</span>
-                    <button class="btn btn-sm btn-danger py-0" onclick="cancelDownload()">Cancel</button>
-                </div>
-                <div class="progress mb-2" style="height: 10px;">
-                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
-                </div>
-                <div class="d-flex justify-content-between text-muted small">
-                    <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
-                    <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
+        
+        <!-- স্টিকি প্লেয়ার রেপার (এটি ওপরে ফিক্সড থাকবে) -->
+        <div class="sticky-player-wrapper">
+            <div id="homePlayerSection">
+                <div id="playerContainer" class="mb-2"></div>
+                <div id="downloadOptions" class="text-center mb-2"></div>
+                
+                <!-- প্রোগ্রেস বার -->
+                <div id="progressBox" class="progress-box">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="progressStatus" class="fw-bold text-warning">Idle</span>
+                        <button class="btn btn-sm btn-danger py-0" onclick="cancelDownload()">Cancel</button>
+                    </div>
+                    <div class="progress mb-2" style="height: 10px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
+                        <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- ভিডিও লিস্ট -->
-        <div id="videoResults" class="row"></div>
+        <!-- নিচের ভিডিও লিস্ট (যা ফ্রিলি স্ক্রোল আপ-ডাউন হবে) -->
+        <div class="scrollable-content">
+            <div id="videoResults" class="row"></div>
+        </div>
     </div>
 
     <!-- History Section -->
@@ -146,9 +199,9 @@
         const optionsDiv = document.getElementById('downloadOptions');
         
         playerSection.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // ভিডিওতে ক্লিক করলেই ওপরে স্ক্রোল হবে
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // ওপরে অটো স্ক্রোল করবে প্লেয়ার দেখানোর জন্য
         
-        playerContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-light"></div><p class="mt-2 mb-0">Loading video player on top...</p></div>';
+        playerContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-light"></div><p class="mt-2 mb-0">Loading player...</p></div>';
         optionsDiv.innerHTML = '';
 
         const formData = new FormData();
@@ -157,21 +210,26 @@
         fetch('/get_info', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
-                if(data.error) {
+                if(data.error && !data.video_url) {
                     playerContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
                     return;
                 }
 
+                // আইফ্রেম এমবেড প্লেয়ার লোড করা হচ্ছে যা ১০০% প্লে হবেই
                 playerContainer.innerHTML = `
-                    <h6 class="mb-2 text-wrap text-warning"><i class="fas fa-play text-danger me-1"></i> ${data.title}</h6>
-                    <video controls autoplay src="${data.video_url}"></video>`;
+                    <h6 class="mb-2 text-truncate text-warning" style="font-size:13px;"><i class="fas fa-play text-danger me-1"></i> ${data.title}</h6>
+                    <div class="iframe-container">
+                        <iframe src="${data.video_url}" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                    </div>`;
 
                 optionsDiv.innerHTML = `
                     <div class="d-flex justify-content-center flex-wrap mt-2">
-                        <button class="btn btn-primary download-btn px-3 py-2" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
-                        <button class="btn btn-info download-btn px-3 py-2 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
-                        <button class="btn btn-warning download-btn px-3 py-2 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
+                        <button class="btn btn-primary download-btn px-3 py-1" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
+                        <button class="btn btn-info download-btn px-3 py-1 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
+                        <button class="btn btn-warning download-btn px-3 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
                     </div>`;
+            }).catch(() => {
+                playerContainer.innerHTML = `<div class="alert alert-danger">Error loading video. Try again!</div>`;
             });
     }
 
@@ -265,5 +323,5 @@
     }
 </script>
 </body>
-                                                                                                              </html>
-                                                                                                              
+    </html>
+    
