@@ -92,24 +92,12 @@ def search():
             videos.append({
                 "title": item['snippet']['title'],
                 "thumbnail": item['snippet']['thumbnails']['high']['url'],
+                "videoId": item['id']['videoId'],
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
-
-@app.route('/get_info', methods=['POST'])
-def get_info():
-    video_url = request.form.get('url')
-    ydl_opts = {'quiet': True, 'noplaylist': True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(video_url, download=False)
-            formats = info.get('formats', [])
-            play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
-            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
 
 @app.route('/start_download')
 def start_download_route():
@@ -137,10 +125,7 @@ def cancel_download():
 
 @app.route('/play_file/<path:filename>')
 def play_file(filename):
-    response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
-    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
-    response.headers["Content-Type"] = "application/octet-stream"
-    return response
+    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
 
 @app.route('/get_downloads')
 def get_downloads():
@@ -153,4 +138,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-            
+    
