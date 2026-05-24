@@ -8,129 +8,104 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
-        body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; }
+        body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; margin: 0; }
         
-        /* সার্চ বার */
-        .header { background: #121212; padding: 15px; border-bottom: 1px solid #222; }
-        .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
-        
-        /* ভিডিও প্লেয়ার থাকবে স্ক্রিনের ওপরে ফিক্সড বা স্টিকি */
-        .sticky-player-wrapper {
+        /* সার্চ বার এবং প্লেয়ার এরিয়া ওপরে ফিক্সড রাখার জন্য স্টিকি কন্টেইনার */
+        .top-fixed-container {
             position: sticky;
             top: 0;
-            z-index: 1050;
+            z-index: 1000;
             background: #121212;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #222;
         }
+        .header { padding: 12px; }
+        .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
         
+        /* প্লেয়ার সেকশন যা স্ক্রিনের ওপরে লক থাকবে */
         #homePlayerSection { 
             background: #1a1a1a; 
             padding: 10px; 
-            border-radius: 12px; 
             display: none; 
-            border: 1px solid #333;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            border-bottom: 2px solid var(--primary);
         }
-        
-        /* আইফ্রেম বা ভিডিও প্লেয়ার সাইজ */
-        .iframe-container {
-            position: relative;
-            width: 100%;
-            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-            height: 0;
-            border-radius: 10px;
-            overflow: hidden;
-            background: #000;
-        }
-        .iframe-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: 0;
+        video { width: 100%; border-radius: 8px; background: #000; max-height: 220px; object-fit: contain; }
+
+        /* নিচের স্ক্রোলযোগ্য এরিয়া */
+        .main-content {
+            padding: 10px;
         }
 
-        /* স্ক্রোলযোগ্য নিচের ভিডিও লিস্ট */
-        .scrollable-content {
-            margin-top: 10px;
-        }
-
-        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
+        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; cursor: pointer; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
-        .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
+        .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; color: #fff; }
         
-        /* বটম নেভিগেশন বার */
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
         .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
         .nav-btn.active { color: var(--primary); }
         .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
         
-        .section { display: none; padding-top: 10px; }
+        .section { display: none; }
         .section.active { display: block; }
-        .download-btn { border-radius: 50px; font-weight: bold; font-size: 12px; margin: 2px; }
+        
+        .download-btn { border-radius: 50px; font-weight: bold; font-size: 11px; margin: 2px; }
         .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .progress-box { background: #222; padding: 15px; border-radius: 10px; margin-top: 15px; display: none; }
+        .progress-box { background: #222; padding: 10px; border-radius: 8px; margin-top: 8px; }
     </style>
 </head>
 <body>
 
-<!-- সার্চ বার -->
-<div class="header">
-    <div class="input-group">
-        <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
-        <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
+<!-- ফিক্সড টপ এরিয়া (সার্চবার + প্লেয়ার) -->
+<div class="top-fixed-container">
+    <div class="header">
+        <div class="input-group">
+            <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
+            <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
+        </div>
+    </div>
+    
+    <!-- ভিডিও প্লেয়ার প্যানেল (স্ক্রিনের ওপরে থাকবে) -->
+    <div id="homePlayerSection">
+        <div id="playerContainer" class="mb-1"></div>
+        <div id="downloadOptions" class="text-center mb-1"></div>
+        
+        <!-- প্রোগ্রেস বক্স -->
+        <div id="progressBox" class="progress-box" style="display: none;">
+            <div class="d-flex justify-content-between mb-1">
+                <span id="progressStatus" class="fw-bold text-warning small">Idle</span>
+                <button class="btn btn-sm btn-danger py-0 px-2" style="font-size:10px;" onclick="cancelDownload()">Cancel</button>
+            </div>
+            <div class="progress mb-1" style="height: 6px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="d-flex justify-content-between text-muted" style="font-size: 10px;">
+                <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
+                <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="container mt-2">
-    <!-- Home Section -->
+<!-- স্ক্রোলযোগ্য মেইন এরিয়া (নিচের ভিডিও লিস্ট) -->
+<div class="main-content container">
+    <!-- হোম সেকশন -->
     <div id="homeSection" class="section active">
-        
-        <!-- স্টিকি প্লেয়ার রেপার (এটি ওপরে ফিক্সড থাকবে) -->
-        <div class="sticky-player-wrapper">
-            <div id="homePlayerSection">
-                <div id="playerContainer" class="mb-2"></div>
-                <div id="downloadOptions" class="text-center mb-2"></div>
-                
-                <!-- প্রোগ্রেস বার -->
-                <div id="progressBox" class="progress-box">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span id="progressStatus" class="fw-bold text-warning">Idle</span>
-                        <button class="btn btn-sm btn-danger py-0" onclick="cancelDownload()">Cancel</button>
-                    </div>
-                    <div class="progress mb-2" style="height: 10px;">
-                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <div class="d-flex justify-content-between text-muted small">
-                        <span id="downloadSpeed"><i class="fas fa-bolt"></i> 0 KB/s</span>
-                        <span id="downloadEta"><i class="fas fa-clock"></i> 00:00</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- নিচের ভিডিও লিস্ট (যা ফ্রিলি স্ক্রোল আপ-ডাউন হবে) -->
-        <div class="scrollable-content">
-            <div id="videoResults" class="row"></div>
-        </div>
+        <div id="videoResults" class="row"></div>
     </div>
 
-    <!-- History Section -->
+    <!-- হিস্ট্রি সেকশন -->
     <div id="historySection" class="section">
-        <h5 class="mb-3"><i class="fas fa-history text-secondary"></i> Search History</h5>
+        <h5 class="mb-3 mt-2"><i class="fas fa-history text-secondary"></i> Search History</h5>
         <div id="historyList"></div>
     </div>
 
-    <!-- Downloads Section -->
+    <!-- ডাউনলোডস সেকশন -->
     <div id="downloadsSection" class="section">
-        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
+        <h5 class="mb-3 mt-2"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
         <div id="downloadsList"></div>
     </div>
 </div>
 
-<!-- Bottom Navigation Bar -->
+<!-- বটম নেভিগেশন -->
 <div class="bottom-nav">
     <button class="nav-btn active" id="btn-home" onclick="switchSection('home')"><i class="fas fa-home"></i>Home</button>
     <button class="nav-btn" id="btn-history" onclick="switchSection('history')"><i class="fas fa-history"></i>History</button>
@@ -177,7 +152,7 @@
             .then(res => res.json())
             .then(data => {
                 resultsDiv.innerHTML = '';
-                if(data.videos.length === 0) {
+                if(!data.videos || data.videos.length === 0) {
                     resultsDiv.innerHTML = '<p class="text-center w-100">No videos found.</p>';
                     return;
                 }
@@ -199,9 +174,8 @@
         const optionsDiv = document.getElementById('downloadOptions');
         
         playerSection.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // ওপরে অটো স্ক্রোল করবে প্লেয়ার দেখানোর জন্য
         
-        playerContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-light"></div><p class="mt-2 mb-0">Loading player...</p></div>';
+        playerContainer.innerHTML = '<div class="text-center p-3"><div class="spinner-border text-light spinner-border-sm"></div><p class="mt-1 small mb-0">Loading stream link...</p></div>';
         optionsDiv.innerHTML = '';
 
         const formData = new FormData();
@@ -210,26 +184,23 @@
         fetch('/get_info', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
-                if(data.error && !data.video_url) {
-                    playerContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                if(data.error) {
+                    playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Error loading stream link!</div>`;
                     return;
                 }
 
-                // আইফ্রেম এমবেড প্লেয়ার লোড করা হচ্ছে যা ১০০% প্লে হবেই
                 playerContainer.innerHTML = `
-                    <h6 class="mb-2 text-truncate text-warning" style="font-size:13px;"><i class="fas fa-play text-danger me-1"></i> ${data.title}</h6>
-                    <div class="iframe-container">
-                        <iframe src="${data.video_url}" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-                    </div>`;
+                    <div class="text-truncate small text-warning mb-1 fw-bold" style="max-width:100%;"><i class="fas fa-play text-danger me-1"></i> ${data.title}</div>
+                    <video controls autoplay playsinline src="${data.video_url}"></video>`;
 
                 optionsDiv.innerHTML = `
-                    <div class="d-flex justify-content-center flex-wrap mt-2">
-                        <button class="btn btn-primary download-btn px-3 py-1" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
-                        <button class="btn btn-info download-btn px-3 py-1 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
-                        <button class="btn btn-warning download-btn px-3 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
+                    <div class="d-flex justify-content-center flex-wrap">
+                        <button class="btn btn-primary download-btn px-2 py-1" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
+                        <button class="btn btn-info download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
+                        <button class="btn btn-warning download-btn px-2 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
                     </div>`;
-            }).catch(() => {
-                playerContainer.innerHTML = `<div class="alert alert-danger">Error loading video. Try again!</div>`;
+            }).catch(err => {
+                playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Connection failed. Please retry!</div>`;
             });
     }
 
@@ -271,11 +242,10 @@
                 document.getElementById('downloadSpeed').innerHTML = `<i class="fas fa-bolt"></i> ${data.speed}`;
                 document.getElementById('downloadEta').innerHTML = `<i class="fas fa-clock"></i> ${data.eta}`;
 
-                if(data.status === 'completed' && data.progress >= 100) {
+                if(data.status === 'completed') {
                     clearInterval(intervalId);
                     isDownloading = false;
                     status.innerText = "COMPLETED!";
-                    
                     setTimeout(() => {
                         window.location.href = `/play_file/${data.filename}`;
                         loadDownloads(); 
@@ -302,14 +272,14 @@
 
     function loadDownloads() {
         const listDiv = document.getElementById('downloadsList');
-        listDiv.innerHTML = '<p class="text-muted text-center">Loading files...</p>';
+        listDiv.innerHTML = '<p class="text-muted text-center small">Loading files...</p>';
 
         fetch('/get_downloads')
             .then(res => res.json())
             .then(files => {
                 listDiv.innerHTML = '';
                 if(!files || files.length === 0) {
-                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-3x mb-3"></i><p>No downloads found.</p></div>';
+                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found.</p></div>';
                     return;
                 }
                 files.forEach(f => {
@@ -323,5 +293,4 @@
     }
 </script>
 </body>
-    </html>
-    
+</html>
