@@ -37,11 +37,14 @@
 </div>
 
 <div class="container mt-3">
+    <!-- Home Section -->
     <div id="homeSection" class="section active">
+        <!-- প্লেয়ার ও ডাউনলোডার অপশন হোমের একদম ওপরে থাকবে -->
         <div id="homePlayerSection">
             <div id="playerContainer" class="mb-2"></div>
             <div id="downloadOptions" class="text-center mb-2"></div>
             
+            <!-- প্রোগ্রেস বার -->
             <div id="progressBox" class="progress-box">
                 <div class="d-flex justify-content-between mb-1">
                     <span id="progressStatus" class="fw-bold text-warning">Idle</span>
@@ -56,20 +59,25 @@
                 </div>
             </div>
         </div>
+        
+        <!-- ভিডিও লিস্ট -->
         <div id="videoResults" class="row"></div>
     </div>
 
+    <!-- History Section -->
     <div id="historySection" class="section">
         <h5 class="mb-3"><i class="fas fa-history text-secondary"></i> Search History</h5>
         <div id="historyList"></div>
     </div>
 
+    <!-- Downloads Section -->
     <div id="downloadsSection" class="section">
         <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
         <div id="downloadsList"></div>
     </div>
 </div>
 
+<!-- Bottom Navigation Bar -->
 <div class="bottom-nav">
     <button class="nav-btn active" id="btn-home" onclick="switchSection('home')"><i class="fas fa-home"></i>Home</button>
     <button class="nav-btn" id="btn-history" onclick="switchSection('history')"><i class="fas fa-history"></i>History</button>
@@ -87,14 +95,19 @@
     function switchSection(sectionId) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        
         document.getElementById(sectionId + 'Section').classList.add('active');
         document.getElementById('btn-' + sectionId).classList.add('active');
-        if(sectionId === 'downloads') loadDownloads();
+
+        if(sectionId === 'downloads') {
+            loadDownloads();
+        }
     }
 
     function handleSearch() {
         const query = document.getElementById('searchInput').value;
         if(!query) return;
+
         switchSection('home');
         if(query.includes('youtube.com') || query.includes('youtu.be')) {
             fetchVideoInfo(query);
@@ -106,6 +119,7 @@
     function searchVideos(query) {
         const resultsDiv = document.getElementById('videoResults');
         resultsDiv.innerHTML = '<div class="text-center w-100 mt-5"><div class="spinner-border text-danger"></div></div>';
+        
         fetch(`/search?q=${encodeURIComponent(query)}`)
             .then(res => res.json())
             .then(data => {
@@ -130,9 +144,11 @@
         const playerSection = document.getElementById('homePlayerSection');
         const playerContainer = document.getElementById('playerContainer');
         const optionsDiv = document.getElementById('downloadOptions');
+        
         playerSection.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        playerContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-light"></div><p class="mt-2 mb-0">Loading video...</p></div>';
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // ভিডিওতে ক্লিক করলেই ওপরে স্ক্রোল হবে
+        
+        playerContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-light"></div><p class="mt-2 mb-0">Loading video player on top...</p></div>';
         optionsDiv.innerHTML = '';
 
         const formData = new FormData();
@@ -145,7 +161,11 @@
                     playerContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
                     return;
                 }
-                playerContainer.innerHTML = `<h6 class="mb-2 text-warning"><i class="fas fa-play text-danger me-1"></i> ${data.title}</h6><video controls autoplay src="${data.video_url}"></video>`;
+
+                playerContainer.innerHTML = `
+                    <h6 class="mb-2 text-wrap text-warning"><i class="fas fa-play text-danger me-1"></i> ${data.title}</h6>
+                    <video controls autoplay src="${data.video_url}"></video>`;
+
                 optionsDiv.innerHTML = `
                     <div class="d-flex justify-content-center flex-wrap mt-2">
                         <button class="btn btn-primary download-btn px-3 py-2" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
@@ -156,13 +176,26 @@
     }
 
     function triggerDownload(url, quality) {
-        if(isDownloading) { alert("একটি ডাউনলোড অলরেডি চলছে!"); return; }
+        if(isDownloading) {
+            alert("একটি ডাউনলোড ইতিমধ্যে চলছে!");
+            return;
+        }
+
         document.getElementById('progressBox').style.display = 'block';
+        const bar = document.getElementById('progressBar');
+        bar.style.width = '0%';
+        bar.innerText = '0%';
         isDownloading = true;
+
         fetch(`/start_download?url=${encodeURIComponent(url)}&quality=${quality}`)
             .then(res => res.json())
             .then(data => {
-                if(data.error) { alert(data.error); isDownloading = false; return; }
+                if(data.error) {
+                    alert(data.error);
+                    isDownloading = false;
+                    document.getElementById('progressBox').style.display = 'none';
+                    return;
+                }
                 intervalId = setInterval(checkProgress, 1000);
             });
     }
@@ -173,6 +206,7 @@
             .then(data => {
                 const bar = document.getElementById('progressBar');
                 const status = document.getElementById('progressStatus');
+                
                 status.innerText = data.status.toUpperCase();
                 bar.style.width = data.progress + '%';
                 bar.innerText = data.progress + '%';
@@ -182,24 +216,42 @@
                 if(data.status === 'completed' && data.progress >= 100) {
                     clearInterval(intervalId);
                     isDownloading = false;
-                    setTimeout(() => { window.location.href = `/play_file/${data.filename}`; loadDownloads(); }, 1000);
+                    status.innerText = "COMPLETED!";
+                    
+                    setTimeout(() => {
+                        window.location.href = `/play_file/${data.filename}`;
+                        loadDownloads(); 
+                    }, 1000);
                 } 
-                if(data.status === 'cancelled' || data.status === 'error') { clearInterval(intervalId); isDownloading = false; }
+                
+                if(data.status === 'cancelled' || data.status === 'error') {
+                    clearInterval(intervalId);
+                    isDownloading = false;
+                }
             });
     }
 
     function cancelDownload() {
-        fetch('/cancel_download').then(() => { clearInterval(intervalId); isDownloading = false; });
+        fetch('/cancel_download')
+            .then(res => res.json())
+            .then(() => {
+                clearInterval(intervalId);
+                isDownloading = false;
+                document.getElementById('progressStatus').innerText = "CANCELLED";
+                document.getElementById('progressBar').style.width = '0%';
+            });
     }
 
     function loadDownloads() {
         const listDiv = document.getElementById('downloadsList');
+        listDiv.innerHTML = '<p class="text-muted text-center">Loading files...</p>';
+
         fetch('/get_downloads')
             .then(res => res.json())
             .then(files => {
                 listDiv.innerHTML = '';
                 if(!files || files.length === 0) {
-                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><p>No downloads found.</p></div>';
+                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-3x mb-3"></i><p>No downloads found.</p></div>';
                     return;
                 }
                 files.forEach(f => {
@@ -213,4 +265,5 @@
     }
 </script>
 </body>
-</html>
+                                                                                                              </html>
+                                                                                                              
