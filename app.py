@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory, make_response
+from flask import Flask, render_template, request, send_from_directory, jsonify, make_response
 import yt_dlp
 import os
 import threading
@@ -51,7 +51,7 @@ def run_download(video_url, quality):
     ydl_opts = {
         'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'restrictfilenames': True,  # ফাইলের নামকে উইন্ডোজ/মোবাইল ফ্রেন্ডলি করার জন্য
+        'restrictfilenames': True, 
         'progress_hooks': [ytdl_hook],
         'quiet': True
     }
@@ -135,18 +135,17 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ফোনে ১ সেকেন্ডে ফাইল সেভ বা ডাউনলোডের জন্য ফিক্সড রুট
 @app.route('/play_file/<path:filename>')
 def play_file(filename):
     response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
-    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
     response.headers["Content-Type"] = "application/octet-stream"
     return response
 
 @app.route('/get_downloads')
 def get_downloads():
     if os.path.exists(DOWNLOAD_FOLDER):
-        files = os.listdir(DOWNLOAD_FOLDER)
+        files = [f for f in os.listdir(DOWNLOAD_FOLDER) if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, f))]
     else:
         files = []
     return jsonify(files)
@@ -154,3 +153,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
+    
