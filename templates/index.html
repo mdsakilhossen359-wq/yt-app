@@ -8,12 +8,24 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { --primary: #ff0050; --secondary: #00f2ea; --dark: #121212; --card: #1e1e1e; }
-        body { background: var(--dark); color: white; font-family: sans-serif; padding-bottom: 80px; margin: 0; }
         
-        /* সার্চ বার এবং প্লেয়ার এরিয়া ওপরে ফিক্সড রাখার জন্য স্টিকি কন্টেইনার */
+        /* পুরো স্ক্রিনকে লক করে কন্টেন্ট স্ক্রোলিং আলাদা করা হয়েছে */
+        html, body { 
+            background: var(--dark); 
+            color: white; 
+            font-family: sans-serif; 
+            margin: 0; 
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        /* ওপরের সার্চ বার ও ভিডিও প্লেয়ার এরিয়া ফিক্সড থাকবে */
         .top-fixed-container {
-            position: sticky;
+            position: fixed;
             top: 0;
+            left: 0;
+            width: 100%;
             z-index: 1000;
             background: #121212;
             border-bottom: 1px solid #222;
@@ -21,25 +33,36 @@
         .header { padding: 12px; }
         .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
         
-        /* প্লেয়ার সেকশন যা স্ক্রিনের ওপরে লক থাকবে */
         #homePlayerSection { 
             background: #1a1a1a; 
             padding: 10px; 
             display: none; 
             border-bottom: 2px solid var(--primary);
         }
-        video { width: 100%; border-radius: 8px; background: #000; max-height: 220px; object-fit: contain; }
+        video { width: 100%; border-radius: 8px; background: #000; max-height: 200px; object-fit: contain; }
 
-        /* নিচের স্ক্রোলযোগ্য এরিয়া */
+        /* প্রধান স্ক্রোলযোগ্য এরিয়া (ভিডিও লিস্ট শুধুমাত্র এখানে স্ক্রোল হবে) */
         .main-content {
-            padding: 10px;
+            position: absolute;
+            top: 70px; /* প্লেয়ার চালু না থাকলে স্বাভাবিক টপ মার্জিন */
+            bottom: 70px; /* বটম ন্যাভবারের জন্য স্পেস */
+            left: 0;
+            width: 100%;
+            overflow-y: auto; /* এখানে স্ক্রোলিং সচল করা হয়েছে */
+            padding: 10px 15px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* প্লেয়ার চালু হলে নিচের লিস্টের পজিশন অটোমেটিক অ্যাডজাস্ট করার জন্য ক্লাস */
+        .main-content.player-active {
+            top: 350px; /* প্লেয়ার ওপেন হলে লিস্ট নিচে নেমে যাবে কিন্তু স্ক্রোল হবে */
         }
 
         .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; cursor: pointer; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
         .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; color: #fff; }
         
-        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
         .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
         .nav-btn.active { color: var(--primary); }
         .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
@@ -54,8 +77,8 @@
 </head>
 <body>
 
-<!-- ফিক্সড টপ এরিয়া (সার্চবার + প্লেয়ার) -->
-<div class="top-fixed-container">
+<!-- ওপরে ফিক্সড কন্টেইনার (সার্চবার + প্লেয়ার) -->
+<div class="top-fixed-container" id="topContainer">
     <div class="header">
         <div class="input-group">
             <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
@@ -63,12 +86,12 @@
         </div>
     </div>
     
-    <!-- ভিডিও প্লেয়ার প্যানেল (স্ক্রিনের ওপরে থাকবে) -->
+    <!-- ভিডিও প্লেয়ার এরিয়া -->
     <div id="homePlayerSection">
         <div id="playerContainer" class="mb-1"></div>
         <div id="downloadOptions" class="text-center mb-1"></div>
         
-        <!-- প্রোগ্রেস বক্স -->
+        <!-- ডাউনলোড প্রোগ্রেস বার -->
         <div id="progressBox" class="progress-box" style="display: none;">
             <div class="d-flex justify-content-between mb-1">
                 <span id="progressStatus" class="fw-bold text-warning small">Idle</span>
@@ -85,8 +108,8 @@
     </div>
 </div>
 
-<!-- স্ক্রোলযোগ্য মেইন এরিয়া (নিচের ভিডিও লিস্ট) -->
-<div class="main-content container">
+<!-- স্ক্রোলযোগ্য ভিডিওর লিস্ট এরিয়া -->
+<div class="main-content" id="mainContent">
     <!-- হোম সেকশন -->
     <div id="homeSection" class="section active">
         <div id="videoResults" class="row"></div>
@@ -94,13 +117,13 @@
 
     <!-- হিস্ট্রি সেকশন -->
     <div id="historySection" class="section">
-        <h5 class="mb-3 mt-2"><i class="fas fa-history text-secondary"></i> Search History</h5>
+        <h5 class="mb-3"><i class="fas fa-history text-secondary"></i> Search History</h5>
         <div id="historyList"></div>
     </div>
 
     <!-- ডাউনলোডস সেকশন -->
     <div id="downloadsSection" class="section">
-        <h5 class="mb-3 mt-2"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
+        <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
         <div id="downloadsList"></div>
     </div>
 </div>
@@ -125,7 +148,7 @@
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         
         document.getElementById(sectionId + 'Section').classList.add('active');
-        document.getElementById('btn-' + sectionId).classList.add('active');
+        document.getElementById('btn-' + sectionId).mathbf{classList}.add('active');
 
         if(sectionId === 'downloads') {
             loadDownloads();
@@ -172,8 +195,11 @@
         const playerSection = document.getElementById('homePlayerSection');
         const playerContainer = document.getElementById('playerContainer');
         const optionsDiv = document.getElementById('downloadOptions');
+        const mainContent = document.getElementById('mainContent');
         
         playerSection.style.display = 'block';
+        mainContent.classList.add('player-active'); // ভিডিও লিস্টের মার্জিন পুশ ডাউন করা হলো
+        mainContent.scrollTop = 0; // লিস্ট স্ক্রোল ওপরে সেট হবে
         
         playerContainer.innerHTML = '<div class="text-center p-3"><div class="spinner-border text-light spinner-border-sm"></div><p class="mt-1 small mb-0">Loading stream link...</p></div>';
         optionsDiv.innerHTML = '';
