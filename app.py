@@ -1,9 +1,8 @@
-from flask import Flask, render_template, request, send_from_directory, jsonify, make_response
+from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
 import yt_dlp
 import os
 import threading
 import requests
-import re
 
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
@@ -12,6 +11,7 @@ YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
+# ডাউনলোডের লাইভ স্ট্যাটাস ট্র্যাকিং স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -20,12 +20,6 @@ download_status = {
     "filename": ""
 }
 cancel_event = threading.Event()
-
-def extract_video_id(url):
-    video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', url)
-    if video_id_match:
-        return video_id_match.group(1)
-    return None
 
 def ytdl_hook(d):
     global download_status
@@ -58,9 +52,9 @@ def run_download(video_url, quality):
     ydl_opts = {
         'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'restrictfilenames': True, 
         'progress_hooks': [ytdl_hook],
-        'quiet': True
+        'quiet': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
     }
     
     if quality == 'mp3':
@@ -72,10 +66,8 @@ def run_download(video_url, quality):
             filename = ydl.prepare_filename(info)
             if quality == 'mp3':
                 filename = filename.rsplit('.', 1)[0] + '.mp3'
-            
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
-            download_status['progress'] = 100
     except Exception as e:
         if "cancelled" in str(e):
             download_status['status'] = 'cancelled'
@@ -96,11 +88,12 @@ def search():
         r = requests.get(url).json()
         videos = []
         for item in r.get('items', []):
-            videos.append({
-                "title": item['snippet']['title'],
-                "thumbnail": item['snippet']['thumbnails']['high']['url'],
-                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-            })
+            if 'videoId' in item['id']:
+                videos.append({
+                    "title": item['snippet']['title'],
+                    "thumbnail": item['snippet']['thumbnails']['high']['url'],
+                    "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+                })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
@@ -108,29 +101,33 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    video_id = extract_video_id(video_url)
-    
-    if not video_id:
-        return jsonify({"error": "Invalid YouTube URL"}), 400
-
-    ydl_opts = {'quiet': True, 'noplaylist': True}
+    # ভিডিও প্লে না হওয়ার সমস্যা সমাধানের জন্য এক্সট্রা আর্গুমেণ্ট যুক্ত করা হয়েছে
+    ydl_opts = {
+        'quiet': True, 
+        'noplaylist': True,
+        'format': 'best[ext=mp4]/best',
+        'extractor_args': {'youtube': {'player_client': ['ios', 'android']}} # ব্লক এড়াতে ios/android মক ক্লায়েন্ট
+    }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
-            embed_url = f"https://www.youtube.com/embed/{video_id}?autoplay=1"
-            return jsonify({
-                "title": info.get('title', 'YouTube Video'), 
-                "video_url": embed_url, 
-                "url": video_url
-            })
-        except Exception as e:
-            # যদি yt_dlp কোনো কারণে ফেইল করে, তাও যেন প্লেয়ার চালু হয়
-            return jsonify({
-                "title": "YouTube Video", 
-                "video_url": f"https://www.youtube.com/embed/{video_id}?autoplay=1", 
-                "url": video_url
-            })
+            formats = info.get('formats', [])
+            
+            # সরাসরি ব্রাউজারে প্লে হওয়ার মতো ভ্যালিড ভিডিও লিংক খোঁজা হচ্ছে
+            play_url = None
+            for f in reversed(formats):
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
+                    play_url = f['url']
+                    break
+                    
+            if not play_url:
+                play_url = info.get('url')
 
+            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+# ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -144,10 +141,12 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
+# ফ্রন্টএন্ড থেকে লাইভ স্ট্যাটাস চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
+# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -155,22 +154,19 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-@app.route('/play_file/<path:filename>')
+# ডাউনলোড করা ফাইল সরাসরি ব্রাউজারে প্লে করার রুট
+@app.route('/play_file/<filename>')
 def play_file(filename):
-    response = make_response(send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True))
-    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
-    response.headers["Content-Type"] = "application/octet-stream"
-    return response
+    return send_from_directory(DOWNLOAD_FOLDER, filename)
 
 @app.route('/get_downloads')
 def get_downloads():
     if os.path.exists(DOWNLOAD_FOLDER):
-        files = [f for f in os.listdir(DOWNLOAD_FOLDER) if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, f))]
+        files = os.listdir(DOWNLOAD_FOLDER)
     else:
         files = []
     return jsonify(files)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
-          
+    app.run(debug=True, host='0.0.0.0', port=5000)
+    
