@@ -4,14 +4,13 @@ import os
 import threading
 import requests
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates')
 DOWNLOAD_FOLDER = 'downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-# ডাউনলোডের লাইভ স্ট্যাটাস ট্র্যাকিং স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -149,9 +148,12 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-@app.route('/play_file/<filename>')
-def play_file(filename):
-    return send_from_directory(DOWNLOAD_FOLDER, filename)
+@app.route('/download_file/<filename>')
+def download_file(filename):
+    try:
+        return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
+    except Exception as e:
+        return str(e), 404
 
 @app.route('/get_downloads')
 def get_downloads():
