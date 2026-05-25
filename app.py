@@ -6,7 +6,7 @@ import requests
 
 app = Flask(__name__, template_folder='templates')
 
-# Render সার্ভারের জন্য সাময়িক স্টোরেজ ডিরেক্টরি (tmp ফোল্ডার ব্যবহার করা নিরাপদ)
+# Render-এর জন্য সবচেয়ে নিরাপদ টেম্পোরারি স্টোরেজ
 DOWNLOAD_FOLDER = '/tmp/downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
@@ -44,12 +44,13 @@ def run_download(video_url, quality):
     global download_status
     cancel_event.clear()
     
-    # FFmpeg ছাড়া ডাউনলোডের জন্য সেফ ফরম্যাট কনফিগারেশন
+    # FFmpeg ছাড়া রেন্ডার ফ্রি টায়ারে ডাউনলোডের জন্য বেস্ট কম্বিনেশন
+    # এটি আলাদা ভিডিও+অডিও ফাইল নামিয়ে জোড়া লাগানোর চেষ্টা করবে না, সরাসরি সিঙ্গেল ফাইল নেবে
     q_map = {
         'full_hd': 'best[ext=mp4]/best',
-        'medium_hd': 'worst[ext=mp4]/best',
-        'low_hd': 'worst[ext=mp4]/best',
-        'mp3': 'wa/worst' # অডিওর জন্য সবচেয়ে সেফ ফরম্যাট
+        'medium_hd': 'best[height<=720][ext=mp4]/best',
+        'low_hd': 'best[height<=480][ext=mp4]/best',
+        'mp3': 'worstvideo[ext=mp4]+bestaudio/best' # FFmpeg ছাড়া অডিও ট্রিক
     }
 
     ydl_opts = {
@@ -68,7 +69,6 @@ def run_download(video_url, quality):
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
     except Exception as e:
-        print(f"Error details: {str(e)}") # রেন্ডার লগে এরর ট্র্যাক করার জন্য
         if "cancelled" in str(e):
             download_status['status'] = 'cancelled'
         else:
@@ -160,4 +160,4 @@ def check_file(filename):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-            
+                
