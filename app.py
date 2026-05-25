@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_from_directory, jsonify, make_response
+from flask import Flask, render_template, request, send_from_directory, jsonify
 import yt_dlp
 import os
 import threading
@@ -6,11 +6,13 @@ import requests
 
 app = Flask(__name__, template_folder='templates')
 DOWNLOAD_FOLDER = 'downloads'
+# একদম ফ্রেশ ওয়ার্কিং ইউটিউব এপিআই কি
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
+# গ্লোবাল ডাউনলোড স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -153,21 +155,21 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-@app.route('/download_file/<filename>')
+# ফাইল ডাউনলোডের মেইন ও একমাত্র রুট (কোনো "Not Found" এরর হবে না)
+@app.route('/download_file/<path:filename>')
 def download_file(filename):
-    try:
-        return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
-    except Exception as e:
-        return str(e), 404
+    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
 
-# সার্ভারে ফাইলটি এখনও আছে কিনা তা চেক করার জন্য হেড রুট (Device list cleaning)
-@app.route('/check_file/<filename>')
+# ডিভাইস ট্র্যাকিং এর জন্য ফাইল চেক রুট
+@app.route('/check_file/<path:filename>')
 def check_file(filename):
     path = os.path.join(DOWNLOAD_FOLDER, filename)
     if os.path.exists(path):
-        return jsonify({"exists": True, "url": f"/download_file/{filename}"})
+        return jsonify({"exists": True})
     return jsonify({"exists": False}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
     
