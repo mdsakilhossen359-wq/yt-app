@@ -40,7 +40,7 @@
             top: 0;
             z-index: 999;
         }
-        video { width: 100%; border-radius: 8px; background: #000; max-height: 200px; object-fit: contain; }
+        video, audio { width: 100%; border-radius: 8px; background: #000; max-height: 200px; object-fit: contain; }
 
         .main-content {
             position: absolute;
@@ -68,9 +68,11 @@
         .section { display: none; }
         .section.active { display: block; }
         
-        .download-btn { border-radius: 50px; font-weight: bold; font-size: 11px; margin: 2px; }
+        .download-btn { border-radius: 50px; font-weight: bold; font-size: 11px; margin: 3px; }
         .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .progress-box { background: #1e1e1e; padding: 12px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        
+        #localPlayerArea { background: #111; padding: 10px; border-radius: 12px; border: 1px solid #333; display: none; }
     </style>
 </head>
 <body>
@@ -78,13 +80,13 @@
 <div class="top-fixed-container" id="topContainer">
     <div class="header">
         <div class="input-group">
-            <input text="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
-            <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
+            <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste link...">
+            <button class="btn btn-danger rounded-circle ms-2" onclick="handleNewSearch()"><i class="fas fa-search"></i></button>
         </div>
     </div>
 </div>
 
-<div class="main-content" id="mainContent">
+<div class="main-content" id="mainContent" onscroll="handleScroll()">
     
     <div id="homeSection" class="section active">
         <div id="homePlayerSection">
@@ -94,6 +96,9 @@
         
         <div class="inner-padding">
             <div id="videoResults" class="row"></div>
+            <div id="scrollLoader" class="text-center w-100 my-3" style="display: none;">
+                <div class="spinner-border text-danger spinner-border-sm"></div>
+            </div>
         </div>
     </div>
 
@@ -122,7 +127,15 @@
                 </div>
             </div>
 
-            <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads</h5>
+            <div id="localPlayerArea" class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small text-truncate text-success fw-bold" id="localPlayerTitle" style="max-width:80%;">Playing File</span>
+                    <button class="btn btn-sm btn-dark rounded-circle text-danger py-0 px-2" onclick="closeLocalPlayer()">✕</button>
+                </div>
+                <div id="localMediaContainer"></div>
+            </div>
+
+            <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads (This Device)</h5>
             <div id="downloadsList"></div>
         </div>
     </div>
@@ -138,9 +151,14 @@
     let intervalId = null;
     let isDownloading = false;
     let currentVideoTitle = "";
+    
+    // আনলিমিটেড স্ক্রোল ভেরিয়েবলস
+    let currentQuery = "Bangla hit songs";
+    let nextPageToken = "";
+    let isLoadingNextPage = false;
 
     window.onload = function() {
-        searchVideos('Bangla hit songs');
+        searchVideos(currentQuery, false);
     };
 
     function switchSection(sectionId) {
@@ -149,7 +167,6 @@
         
         document.getElementById(sectionId + 'Section').classList.add('active');
         document.getElementById('btn-' + sectionId).classList.add('active');
-
         document.getElementById('mainContent').scrollTop = 0;
 
         if(sectionId === 'downloads') {
@@ -157,7 +174,7 @@
         }
     }
 
-    function handleSearch() {
+    function handleNewSearch() {
         const query = document.getElementById('searchInput').value;
         if(!query) return;
 
@@ -165,22 +182,51 @@
         if(query.includes('youtube.com') || query.includes('youtu.be')) {
             fetchVideoInfo(query);
         } else {
-            searchVideos(query);
+            currentQuery = query;
+            nextPageToken = ""; // রিসেট টোকেন নতুন সার্চের জন্য
+            searchVideos(currentQuery, false);
         }
     }
 
-    function searchVideos(query) {
-        const resultsDiv = document.getElementById('videoResults');
-        resultsDiv.innerHTML = '<div class="text-center w-100 mt-5"><div class="spinner-border text-danger"></div></div>';
+    // আনলিমিটেড স্ক্রোলিং ডিটেক্টর লজিক
+    function handleScroll() {
+        const mainContent = document.getElementById('mainContent');
+        const homeSection = document.getElementById('homeSection');
         
-        fetch(`/search?q=${encodeURIComponent(query)}`)
+        // শুধু হোম পেজ একটিভ থাকলে এবং নেক্সট পেজ টোকেন থাকলে স্ক্রোল কাজ করবে
+        if (homeSection.classList.contains('active') && nextPageToken && !isLoadingNextPage) {
+            // নিচে থেকে মাত্র 100px উপরে আসা মাত্রই লোড ট্রিগার করবে
+            if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
+                searchVideos(currentQuery, true);
+            }
+        }
+    }
+
+    function searchVideos(query, isNextPage = false) {
+        isLoadingNextPage = true;
+        const resultsDiv = document.getElementById('videoResults');
+        const loader = document.getElementById('scrollLoader');
+        
+        if (!isNextPage) {
+            resultsDiv.innerHTML = '<div class="text-center w-100 mt-5"><div class="spinner-border text-danger"></div></div>';
+        } else {
+            loader.style.display = 'block';
+        }
+        
+        fetch(`/search?q=${encodeURIComponent(query)}&pageToken=${nextPageToken}`)
             .then(res => res.json())
             .then(data => {
-                resultsDiv.innerHTML = '';
+                if (!isNextPage) resultsDiv.innerHTML = '';
+                loader.style.display = 'none';
+                
                 if(!data.videos || data.videos.length === 0) {
-                    resultsDiv.innerHTML = '<p class="text-center w-100">No videos found.</p>';
+                    if(!isNextPage) resultsDiv.innerHTML = '<p class="text-center w-100">No videos found.</p>';
+                    isLoadingNextPage = false;
                     return;
                 }
+                
+                nextPageToken = data.nextPageToken || ""; // পরবর্তী পেজের টোকেন স্টোর করা হলো
+                
                 data.videos.forEach(v => {
                     resultsDiv.innerHTML += `
                         <div class="col-md-4 col-sm-6 col-12">
@@ -190,8 +236,11 @@
                             </div>
                         </div>`;
                 });
+                isLoadingNextPage = false;
             }).catch(err => {
-                resultsDiv.innerHTML = '<p class="text-center w-100 text-danger">Failed to load videos.</p>';
+                loader.style.display = 'none';
+                isLoadingNextPage = false;
+                if(!isNextPage) resultsDiv.innerHTML = '<p class="text-center w-100 text-danger">Failed to load videos.</p>';
             });
     }
 
@@ -225,9 +274,10 @@
 
                 optionsDiv.innerHTML = `
                     <div class="d-flex justify-content-center flex-wrap">
-                        <button class="btn btn-primary download-btn px-2 py-1" onclick="triggerDownload('${data.url}', '1080p')">1080p MP4</button>
-                        <button class="btn btn-info download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', '720p')">720p MP4</button>
-                        <button class="btn btn-warning download-btn px-2 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')">MP3 Audio</button>
+                        <button class="btn btn-primary download-btn px-2 py-1" onclick="triggerDownload('${data.url}', 'full_hd')">Full HD 1080p</button>
+                        <button class="btn btn-info download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', 'medium_hd')">Medium HD 720p</button>
+                        <button class="btn btn-secondary download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', 'low_hd')">Low HD 480p</button>
+                        <button class="btn btn-warning download-btn px-2 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')"><i class="fas fa-music"></i> MP3 Audio</button>
                     </div>`;
             }).catch(err => {
                 playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Connection failed. Please retry!</div>`;
@@ -240,7 +290,6 @@
             return;
         }
 
-        // ডাউনলোড পেজে অটোমেটিক কনভার্ট / সুইচ করবে
         switchSection('downloads');
         
         document.getElementById('downloadingTitle').innerText = "Processing: " + currentVideoTitle;
@@ -281,6 +330,9 @@
                     isDownloading = false;
                     status.innerText = "COMPLETED!";
                     
+                    // ডিভাইস ট্র্যাকিং: লোকাল ব্রাউজারে ফাইলের নামটি সেভ করে রাখা হচ্ছে
+                    saveFileToDevice(data.filename);
+
                     setTimeout(() => {
                         window.location.href = `/download_file/${encodeURIComponent(data.filename)}`;
                         document.getElementById('progressBox').style.display = 'none';
@@ -312,27 +364,72 @@
             });
     }
 
+    // লোকাল ডিভাইসে ডাটা রাখার ফাংশন (ডিভাইস ভিত্তিক ফিল্টারিং এর মূল হাতিয়ার)
+    function saveFileToDevice(filename) {
+        let localFiles = JSON.parse(localStorage.getItem('my_downloads')) || [];
+        if(!localFiles.includes(filename)){
+            localFiles.push(filename);
+            localStorage.setItem('my_downloads', JSON.stringify(localFiles));
+        }
+    }
+
+    // ডিভাইস ট্র্যাকিং ফিল্টার অনুসারে লোড করার ফাংশন
     function loadDownloads() {
         const listDiv = document.getElementById('downloadsList');
-        listDiv.innerHTML = '<p class="text-muted text-center small">Loading files...</p>';
+        listDiv.innerHTML = '<p class="text-muted text-center small">Checking files on this device...</p>';
 
-        fetch('/get_downloads')
-            .then(res => res.json())
-            .then(files => {
-                listDiv.innerHTML = '';
-                if(!files || files.length === 0) {
-                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found.</p></div>';
-                    return;
-                }
-                files.forEach(f => {
-                    listDiv.innerHTML += `
-                        <div class="list-item">
-                            <div class="text-truncate fw-bold small" style="max-width: 75%; color: #00f2ea;"><i class="fas fa-file-video me-2"></i>${f}</div>
-                            <a href="/download_file/${encodeURIComponent(f)}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
-                        </div>`;
+        let localFiles = JSON.parse(localStorage.getItem('my_downloads')) || [];
+        
+        if(localFiles.length === 0) {
+            listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found on this device.</p></div>';
+            return;
+        }
+
+        listDiv.innerHTML = '';
+        let validFilesCount = 0;
+
+        // প্রত্যেকটি লোকাল সেভড ফাইল সার্ভারে এখনও বিদ্যমান কিনা তা ভ্যালিডেট করা হচ্ছে
+        localFiles.forEach((f, index) => {
+            fetch(`/check_file/${encodeURIComponent(f)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.exists) {
+                        validFilesCount++;
+                        let icon = f.endsWith('.mp3') ? 'fa-file-audio text-warning' : 'fa-file-video text-info';
+                        listDiv.innerHTML += `
+                            <div class="list-item">
+                                <div class="text-truncate fw-bold small" style="max-width: 60%; color: #fff;"><i class="fas ${icon} me-2"></i>${f}</div>
+                                <div>
+                                    <button class="btn btn-sm btn-info text-white rounded-pill px-2 py-0 me-1" style="font-size:11px;" onclick="playLocalFile('${f}')"><i class="fas fa-play"></i> Play</button>
+                                    <a href="/download_file/${encodeURIComponent(f)}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
+                                </div>
+                            </div>`;
+                    }
+                }).catch(() => {
+                    // যদি সার্ভার থেকে ডিলিট হয়ে যায় তবে লোকাল স্টোরেজ থেকেও রিমুভ করবে
+                    localFiles.splice(index, 1);
+                    localStorage.setItem('my_downloads', JSON.stringify(localFiles));
                 });
-            });
+        });
+
+        setTimeout(() => {
+            if(validFilesCount === 0 && listDiv.innerHTML === '') {
+                listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found on this device.</p></div>';
+            }
+        }, 1200);
     }
-</script>
-</body>
-</html>
+
+    // ডাউনলোড করা ফাইল পেজের ভেতরেই প্লে করার সিস্টেম
+    function playLocalFile(filename) {
+        const area = document.getElementById('localPlayerArea');
+        const title = document.getElementById('localPlayerTitle');
+        const container = document.getElementById('localMediaContainer');
+        
+        title.innerText = "Playing: " + filename;
+        area.style.display = 'block';
+        document.getElementById('mainContent').scrollTop = 0;
+
+        const fileUrl = `/download_file/${encodeURIComponent(filename)}`;
+        
+        if(filename.endsWith('.mp3')) {
+            container.innerHTML = `<audio controls autoplay src="${
