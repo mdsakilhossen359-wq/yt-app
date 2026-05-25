@@ -5,14 +5,14 @@ import threading
 import requests
 
 app = Flask(__name__, template_folder='templates')
-DOWNLOAD_FOLDER = 'downloads'
-# একদম ফ্রেশ ওয়ার্কিং ইউটিউব এপিআই কি
+
+# Render সার্ভারের জন্য সাময়িক স্টোরেজ ডিরেক্টরি (tmp ফোল্ডার ব্যবহার করা নিরাপদ)
+DOWNLOAD_FOLDER = '/tmp/downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-# গ্লোবাল ডাউনলোড স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -44,37 +44,31 @@ def run_download(video_url, quality):
     global download_status
     cancel_event.clear()
     
+    # FFmpeg ছাড়া ডাউনলোডের জন্য সেফ ফরম্যাট কনফিগারেশন
     q_map = {
-        'full_hd': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
-        'medium_hd': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
-        'low_hd': 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best',
-        'mp3': 'bestaudio/best'
+        'full_hd': 'best[ext=mp4]/best',
+        'medium_hd': 'worst[ext=mp4]/best',
+        'low_hd': 'worst[ext=mp4]/best',
+        'mp3': 'wa/worst' # অডিওর জন্য সবচেয়ে সেফ ফরম্যাট
     }
 
     ydl_opts = {
-        'format': q_map.get(quality, 'best'),
+        'format': q_map.get(quality, 'best[ext=mp4]'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
         'quiet': True,
+        'noplaylist': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
     }
-    
-    if quality == 'mp3':
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192'
-        }]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             filename = ydl.prepare_filename(info)
-            if quality == 'mp3':
-                filename = filename.rsplit('.', 1)[0] + '.mp3'
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
     except Exception as e:
+        print(f"Error details: {str(e)}") # রেন্ডার লগে এরর ট্র্যাক করার জন্য
         if "cancelled" in str(e):
             download_status['status'] = 'cancelled'
         else:
@@ -117,16 +111,13 @@ def get_info():
         try:
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
-            
             play_url = None
             for f in reversed(formats):
                 if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
                     play_url = f['url']
                     break
-                    
             if not play_url:
                 play_url = info.get('url')
-
             return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -155,12 +146,10 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ফাইল ডাউনলোডের মেইন ও একমাত্র রুট (কোনো "Not Found" এরর হবে না)
 @app.route('/download_file/<path:filename>')
 def download_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
 
-# ডিভাইস ট্র্যাকিং এর জন্য ফাইল চেক রুট
 @app.route('/check_file/<path:filename>')
 def check_file(filename):
     path = os.path.join(DOWNLOAD_FOLDER, filename)
@@ -169,7 +158,6 @@ def check_file(filename):
     return jsonify({"exists": False}), 404
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-    
+            
