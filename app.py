@@ -6,34 +6,38 @@ import requests
 
 app = Flask(__name__, template_folder='templates')
 
-# Render-এর জন্য সবচেয়ে নিরাপদ টেম্পোরারি স্টোরেজ
 DOWNLOAD_FOLDER = '/tmp/downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-download_status = {
-    "status": "idle",
-    "progress": 0,
-    "speed": "0 KB/s",
-    "eta": "00:00",
-    "filename": ""
-}
+download_status = {"status": "idle", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
 cancel_event = threading.Event()
+
+# ইউটিউব বট ব্লকিং বাইপাস করার জন্য বিশেষ ক্লায়েন্ট আর্গুমেন্ট
+YTDL_CLIENT_ARGS = {
+    'quiet': True,
+    'noplaylist': True,
+    'extractor_args': {
+        'youtube': {
+            # এটি ইউটিউবকে বোকা বানাবে যে রিকোয়েস্টটি কোনো সার্ভার থেকে নয়, আসল মোবাইল থেকে আসছে
+            'player_client': ['android_music', 'android', 'web_embedded'],
+            'skip': ['webpage', 'player']
+        }
+    }
+}
 
 def ytdl_hook(d):
     global download_status
     if cancel_event.is_set():
         raise Exception("Download cancelled by user")
-    
     if d['status'] == 'downloading':
         download_status['status'] = 'downloading'
         total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
         downloaded = d.get('downloaded_bytes', 0)
         if total > 0:
             download_status['progress'] = round((downloaded / total) * 100, 2)
-        
         download_status['speed'] = d.get('_speed_str', '0 KB/s')
         download_status['eta'] = d.get('_eta_str', '00:00')
     elif d['status'] == 'finished':
@@ -44,22 +48,18 @@ def run_download(video_url, quality):
     global download_status
     cancel_event.clear()
     
-    # FFmpeg ছাড়া রেন্ডার ফ্রি টায়ারে ডাউনলোডের জন্য বেস্ট কম্বিনেশন
-    # এটি আলাদা ভিডিও+অডিও ফাইল নামিয়ে জোড়া লাগানোর চেষ্টা করবে না, সরাসরি সিঙ্গেল ফাইল নেবে
     q_map = {
         'full_hd': 'best[ext=mp4]/best',
         'medium_hd': 'best[height<=720][ext=mp4]/best',
         'low_hd': 'best[height<=480][ext=mp4]/best',
-        'mp3': 'worstvideo[ext=mp4]+bestaudio/best' # FFmpeg ছাড়া অডিও ট্রিক
+        'mp3': 'worstvideo[ext=mp4]+bestaudio/best'
     }
 
     ydl_opts = {
         'format': q_map.get(quality, 'best[ext=mp4]'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
-        'quiet': True,
-        'noplaylist': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        **YTDL_CLIENT_ARGS
     }
 
     try:
@@ -69,10 +69,7 @@ def run_download(video_url, quality):
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
     except Exception as e:
-        if "cancelled" in str(e):
-            download_status['status'] = 'cancelled'
-        else:
-            download_status['status'] = 'error'
+        download_status['status'] = 'error'
         download_status['progress'] = 0
 
 @app.route('/')
@@ -102,10 +99,8 @@ def search():
 def get_info():
     video_url = request.form.get('url')
     ydl_opts = {
-        'quiet': True, 
-        'noplaylist': True,
         'format': 'best[ext=mp4]/best',
-        'extractor_args': {'youtube': {'player_client': ['ios', 'android']}}
+        **YTDL_CLIENT_ARGS
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -127,10 +122,8 @@ def start_download_route():
     global download_status
     video_url = request.args.get('url')
     quality = request.args.get('quality', 'medium_hd')
-    
     if download_status['status'] == 'downloading':
         return jsonify({"error": "একটি ডাউনলোড ইতিমধ্যে চলছে!"}), 400
-        
     download_status = {"status": "downloading", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
@@ -160,4 +153,4 @@ def check_file(filename):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-                
+    
