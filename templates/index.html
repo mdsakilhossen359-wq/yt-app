@@ -52,10 +52,7 @@
             -webkit-overflow-scrolling: touch;
         }
         
-        .inner-padding {
-            padding: 10px 15px;
-        }
-
+        .inner-padding { padding: 10px 15px; }
         .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; cursor: pointer; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
         .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; color: #fff; }
@@ -135,7 +132,7 @@
                 <div id="localMediaContainer"></div>
             </div>
 
-            <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads (This Device)</h5>
+            <h5 class="mb-3"><i class="fas fa-folder-open text-info"></i> My Downloads (This Device Only)</h5>
             <div id="downloadsList"></div>
         </div>
     </div>
@@ -167,7 +164,6 @@
         
         document.getElementById(sectionId + 'Section').classList.add('active');
         document.getElementById('btn-' + sectionId).classList.add('active');
-        document.getElementById('mainContent').scrollTop = 0;
 
         if(sectionId === 'downloads') {
             loadDownloads();
@@ -183,20 +179,18 @@
             fetchVideoInfo(query);
         } else {
             currentQuery = query;
-            nextPageToken = ""; // রিসেট টোকেন নতুন সার্চের জন্য
+            nextPageToken = ""; 
             searchVideos(currentQuery, false);
         }
     }
 
-    // আনলিমিটেড স্ক্রোলিং ডিটেক্টর লজিক
+    // আনলিমিটেড স্ক্রোল হ্যান্ডলার
     function handleScroll() {
         const mainContent = document.getElementById('mainContent');
         const homeSection = document.getElementById('homeSection');
         
-        // শুধু হোম পেজ একটিভ থাকলে এবং নেক্সট পেজ টোকেন থাকলে স্ক্রোল কাজ করবে
         if (homeSection.classList.contains('active') && nextPageToken && !isLoadingNextPage) {
-            // নিচে থেকে মাত্র 100px উপরে আসা মাত্রই লোড ট্রিগার করবে
-            if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
+            if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 150) {
                 searchVideos(currentQuery, true);
             }
         }
@@ -225,7 +219,7 @@
                     return;
                 }
                 
-                nextPageToken = data.nextPageToken || ""; // পরবর্তী পেজের টোকেন স্টোর করা হলো
+                nextPageToken = data.nextPageToken || "";
                 
                 data.videos.forEach(v => {
                     resultsDiv.innerHTML += `
@@ -237,10 +231,9 @@
                         </div>`;
                 });
                 isLoadingNextPage = false;
-            }).catch(err => {
+            }).catch(() => {
                 loader.style.display = 'none';
                 isLoadingNextPage = false;
-                if(!isNextPage) resultsDiv.innerHTML = '<p class="text-center w-100 text-danger">Failed to load videos.</p>';
             });
     }
 
@@ -262,25 +255,24 @@
             .then(res => res.json())
             .then(data => {
                 if(data.error) {
-                    playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Error loading stream link!</div>`;
+                    playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Error loading stream!</div>`;
                     return;
                 }
                 
                 currentVideoTitle = data.title;
 
                 playerContainer.innerHTML = `
-                    <div class="text-truncate small text-warning mb-1 fw-bold" style="max-width:100%;"><i class="fas fa-play text-danger me-1"></i> ${data.title}</div>
+                    <div class="text-truncate small text-warning mb-1 fw-bold"><i class="fas fa-play text-danger me-1"></i> ${data.title}</div>
                     <video controls autoplay playsinline src="${data.video_url}"></video>`;
 
                 optionsDiv.innerHTML = `
                     <div class="d-flex justify-content-center flex-wrap">
-                        <button class="btn btn-primary download-btn px-2 py-1" onclick="triggerDownload('${data.url}', 'full_hd')">Full HD 1080p</button>
-                        <button class="btn btn-info download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', 'medium_hd')">Medium HD 720p</button>
-                        <button class="btn btn-secondary download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', 'low_hd')">Low HD 480p</button>
+                        <button class="btn btn-primary download-btn px-2 py-1" onclick="triggerDownload('${data.url}', 'full_hd')">1080p MP4</button>
+                        <button class="btn btn-info download-btn px-2 py-1 text-white" onclick="triggerDownload('${data.url}', 'medium_hd')">720p MP4</button>
                         <button class="btn btn-warning download-btn px-2 py-1 fw-bold" onclick="triggerDownload('${data.url}', 'mp3')"><i class="fas fa-music"></i> MP3 Audio</button>
                     </div>`;
-            }).catch(err => {
-                playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Connection failed. Please retry!</div>`;
+            }).catch(() => {
+                playerContainer.innerHTML = `<div class="alert alert-danger p-2 small">Failed to connect!</div>`;
             });
     }
 
@@ -291,12 +283,9 @@
         }
 
         switchSection('downloads');
-        
         document.getElementById('downloadingTitle').innerText = "Processing: " + currentVideoTitle;
         document.getElementById('progressBox').style.display = 'block';
-        const bar = document.getElementById('progressBar');
-        bar.style.width = '0%';
-        bar.innerText = '0%';
+        document.getElementById('progressBar').style.width = '0%';
         isDownloading = true;
 
         fetch(`/start_download?url=${encodeURIComponent(url)}&quality=${quality}`)
@@ -330,7 +319,7 @@
                     isDownloading = false;
                     status.innerText = "COMPLETED!";
                     
-                    // ডিভাইস ট্র্যাকিং: লোকাল ব্রাউজারে ফাইলের নামটি সেভ করে রাখা হচ্ছে
+                    // ব্রাউজারে ফাইলের নাম সেভ লক করা হচ্ছে
                     saveFileToDevice(data.filename);
 
                     setTimeout(() => {
@@ -351,20 +340,13 @@
     }
 
     function cancelDownload() {
-        fetch('/cancel_download')
-            .then(res => res.json())
-            .then(() => {
-                clearInterval(intervalId);
-                isDownloading = false;
-                document.getElementById('progressStatus').innerText = "CANCELLED";
-                document.getElementById('progressBar').style.width = '0%';
-                setTimeout(() => {
-                    document.getElementById('progressBox').style.display = 'none';
-                }, 1000);
-            });
+        fetch('/cancel_download').then(() => {
+            clearInterval(intervalId);
+            isDownloading = false;
+            document.getElementById('progressBox').style.display = 'none';
+        });
     }
 
-    // লোকাল ডিভাইসে ডাটা রাখার ফাংশন (ডিভাইস ভিত্তিক ফিল্টারিং এর মূল হাতিয়ার)
     function saveFileToDevice(filename) {
         let localFiles = JSON.parse(localStorage.getItem('my_downloads')) || [];
         if(!localFiles.includes(filename)){
@@ -373,10 +355,10 @@
         }
     }
 
-    // ডিভাইস ট্র্যাকিং ফিল্টার অনুসারে লোড করার ফাংশন
+    // ডিভাইস লকড ডাউনলোড লিস্ট জেনারেটর (ক্র্যাশ-প্রুফ)
     function loadDownloads() {
         const listDiv = document.getElementById('downloadsList');
-        listDiv.innerHTML = '<p class="text-muted text-center small">Checking files on this device...</p>';
+        listDiv.innerHTML = '<p class="text-muted text-center small">Syncing with device...</p>';
 
         let localFiles = JSON.parse(localStorage.getItem('my_downloads')) || [];
         
@@ -387,49 +369,64 @@
 
         listDiv.innerHTML = '';
         let validFilesCount = 0;
+        let checkedCount = 0;
 
-        // প্রত্যেকটি লোকাল সেভড ফাইল সার্ভারে এখনও বিদ্যমান কিনা তা ভ্যালিডেট করা হচ্ছে
         localFiles.forEach((f, index) => {
             fetch(`/check_file/${encodeURIComponent(f)}`)
-                .then(res => res.json())
-                .then(data => {
-                    if(data.exists) {
+                .then(res => {
+                    checkedCount++;
+                    if(res.ok) {
                         validFilesCount++;
                         let icon = f.endsWith('.mp3') ? 'fa-file-audio text-warning' : 'fa-file-video text-info';
                         listDiv.innerHTML += `
                             <div class="list-item">
-                                <div class="text-truncate fw-bold small" style="max-width: 60%; color: #fff;"><i class="fas ${icon} me-2"></i>${f}</div>
+                                <div class="text-truncate fw-bold small" style="max-width: 55%; color: #fff;"><i class="fas ${icon} me-2"></i>${f}</div>
                                 <div>
                                     <button class="btn btn-sm btn-info text-white rounded-pill px-2 py-0 me-1" style="font-size:11px;" onclick="playLocalFile('${f}')"><i class="fas fa-play"></i> Play</button>
                                     <a href="/download_file/${encodeURIComponent(f)}" class="btn btn-sm btn-success rounded-circle px-2 py-1"><i class="fas fa-arrow-down"></i></a>
                                 </div>
                             </div>`;
+                    } else {
+                        // ফাইল ডিলিট হয়ে গেলে রিমুভ করবে লুপ আটকাবে না
+                        localFiles.splice(index, 1);
+                        localStorage.setItem('my_downloads', JSON.stringify(localFiles));
                     }
-                }).catch(() => {
-                    // যদি সার্ভার থেকে ডিলিট হয়ে যায় তবে লোকাল স্টোরেজ থেকেও রিমুভ করবে
-                    localFiles.splice(index, 1);
-                    localStorage.setItem('my_downloads', JSON.stringify(localFiles));
+                    checkEmptyState(checkedCount, localFiles.length, validFilesCount, listDiv);
+                })
+                .catch(() => {
+                    checkedCount++;
+                    checkEmptyState(checkedCount, localFiles.length, validFilesCount, listDiv);
                 });
         });
-
-        setTimeout(() => {
-            if(validFilesCount === 0 && listDiv.innerHTML === '') {
-                listDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found on this device.</p></div>';
-            }
-        }, 1200);
     }
 
-    // ডাউনলোড করা ফাইল পেজের ভেতরেই প্লে করার সিস্টেম
+    function checkEmptyState(checked, total, valid, targetDiv) {
+        if(checked >= total && valid === 0) {
+            targetDiv.innerHTML = '<div class="text-center mt-5 text-muted"><i class="fas fa-folder-open fa-2x mb-2"></i><p class="small">No downloads found on this device.</p></div>';
+        }
+    }
+
     function playLocalFile(filename) {
         const area = document.getElementById('localPlayerArea');
-        const title = document.getElementById('localPlayerTitle');
         const container = document.getElementById('localMediaContainer');
         
-        title.innerText = "Playing: " + filename;
+        document.getElementById('localPlayerTitle').innerText = "Playing: " + filename;
         area.style.display = 'block';
         document.getElementById('mainContent').scrollTop = 0;
 
         const fileUrl = `/download_file/${encodeURIComponent(filename)}`;
-        
         if(filename.endsWith('.mp3')) {
-            container.innerHTML = `<audio controls autoplay src="${
+            container.innerHTML = `<audio controls autoplay src="${fileUrl}"></audio>`;
+        } else {
+            container.innerHTML = `<video controls autoplay playsinline src="${fileUrl}"></video>`;
+        }
+    }
+
+    function closeLocalPlayer() {
+        document.getElementById('localPlayerArea').style.display = 'none';
+        document.getElementById('localMediaContainer').innerHTML = '';
+    }
+</script>
+</body>
+    </html>
+    
