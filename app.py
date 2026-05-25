@@ -43,8 +43,9 @@ def run_download(video_url, quality):
     cancel_event.clear()
     
     q_map = {
-        '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        '720p': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'full_hd': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
+        'medium_hd': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
+        'low_hd': 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best',
         'mp3': 'bestaudio/best'
     }
 
@@ -57,7 +58,11 @@ def run_download(video_url, quality):
     }
     
     if quality == 'mp3':
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192'
+        }]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -128,7 +133,7 @@ def get_info():
 def start_download_route():
     global download_status
     video_url = request.args.get('url')
-    quality = request.args.get('quality', '720p')
+    quality = request.args.get('quality', 'medium_hd')
     
     if download_status['status'] == 'downloading':
         return jsonify({"error": "একটি ডাউনলোড ইতিমধ্যে চলছে!"}), 400
@@ -155,13 +160,13 @@ def download_file(filename):
     except Exception as e:
         return str(e), 404
 
-@app.route('/get_downloads')
-def get_downloads():
-    if os.path.exists(DOWNLOAD_FOLDER):
-        files = os.listdir(DOWNLOAD_FOLDER)
-    else:
-        files = []
-    return jsonify(files)
+# সার্ভারে ফাইলটি এখনও আছে কিনা তা চেক করার জন্য হেড রুট (Device list cleaning)
+@app.route('/check_file/<filename>')
+def check_file(filename):
+    path = os.path.join(DOWNLOAD_FOLDER, filename)
+    if os.path.exists(path):
+        return jsonify({"exists": True, "url": f"/download_file/{filename}"})
+    return jsonify({"exists": False}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
