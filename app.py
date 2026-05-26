@@ -1,42 +1,28 @@
-from flask import Flask, render_template, request, send_from_directory, jsonify, session, redirect, url_for
-from authlib.integrations.flask_client import OAuth
+from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
 import yt_dlp
 import os
 import threading
 import requests
 
-app = Flask(__name__, template_folder='templates')
-app.secret_key = os.environ.get("SECRET_KEY", "yt-app-super-secure-key-2026")
-
-# 🔐 গুগল ক্লাউড ক্রেডেনশিয়াল (ফাঁকা রাখলেও অ্যাপ এখন ক্র্যাশ করবে না)
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "YOUR_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
-
-# Safe OAuth initialization
-oauth = OAuth(app)
-try:
-    google = oauth.register(
-        name='google',
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-        client_kwargs={'scope': 'openid email profile'}
-    )
-except Exception as e:
-    print(f"OAuth Configuration warning: {e}")
-    google = None
-
-DOWNLOAD_FOLDER = '/tmp/downloads'
+app = Flask(__name__)
+DOWNLOAD_FOLDER = 'downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
-COOKIES_FILE = 'cookies.txt'
+COOKIES_FILE = 'cookies.txt'  # কুকিজ ফাইলের পাথ নির্ধারণ করা হলো
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-download_status = {"status": "idle", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
+# ডাউনলোডের লাইভ স্ট্যাটাস ট্র্যাকিং স্টেট
+download_status = {
+    "status": "idle",
+    "progress": 0,
+    "speed": "0 KB/s",
+    "eta": "00:00",
+    "filename": ""
+}
 cancel_event = threading.Event()
 
-# 🛡️ ইউটিউব বাইপাস করার জন্য আপনার ফ্রেশ কুকিজ লোড করা হচ্ছে
+# 🛡️ ইউটিউব ব্লকিং বাইপাস করার জন্য কুকিজ ফাইল চেক ও সেটআপ করার লজিক
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
@@ -50,79 +36,66 @@ YTDL_CLIENT_ARGS = {
 
 if os.path.exists(COOKIES_FILE):
     YTDL_CLIENT_ARGS['cookiefile'] = COOKIES_FILE
-    print("✅ New cookies.txt successfully injected into yt-dlp!")
+    print("✅ cookies.txt successfully loaded into yt-dlp!")
 else:
-    print("⚠️ Warning: cookies.txt not found!")
+    print("⚠️ Warning: cookies.txt not found. Direct streaming might fail!")
 
 def ytdl_hook(d):
     global download_status
     if cancel_event.is_set():
-        raise Exception("Download cancelled")
+        raise Exception("Download cancelled by user")
+    
     if d['status'] == 'downloading':
         download_status['status'] = 'downloading'
         total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
         downloaded = d.get('downloaded_bytes', 0)
         if total > 0:
             download_status['progress'] = round((downloaded / total) * 100, 2)
+        
         download_status['speed'] = d.get('_speed_str', '0 KB/s')
         download_status['eta'] = d.get('_eta_str', '00:00')
     elif d['status'] == 'finished':
         download_status['status'] = 'completed'
+        download_status['progress'] = 100
 
 def run_download(video_url, quality):
     global download_status
     cancel_event.clear()
     
     q_map = {
-        'full_hd': 'best[ext=mp4]/best',
-        'medium_hd': 'best[height<=720][ext=mp4]/best',
-        'low_hd': 'best[height<=480][ext=mp4]/best',
-        'mp3': 'worstvideo[ext=mp4]+bestaudio/best'
+        '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        '720p': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'mp3': 'bestaudio/best'
     }
 
     ydl_opts = {
-        'format': q_map.get(quality, 'best[ext=mp4]'),
+        'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
-        **YTDL_CLIENT_ARGS
+        **YTDL_CLIENT_ARGS  # কুকিজ সেটআপ এখানে পাস করা হলো
     }
+    
+    if quality == 'mp3':
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             filename = ydl.prepare_filename(info)
+            if quality == 'mp3':
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
-    except Exception:
-        download_status['status'] = 'error'
+    except Exception as e:
+        if "cancelled" in str(e):
+            download_status['status'] = 'cancelled'
+        else:
+            download_status['status'] = 'error'
+        download_status['progress'] = 0
 
-# 🌐 ---- LOGIN ROUTES ----
-@app.route('/login')
-def login():
-    if not google or GOOGLE_CLIENT_ID == "YOUR_CLIENT_ID":
-        return "Google Login is not configured yet. Please set Client ID in app.py", 400
-    redirect_uri = url_for('auth_callback', _external=True)
-    return google.authorize_redirect(redirect_uri)
-
-@app.route('/callback')
-def auth_callback():
-    if not google: return redirect(url_for('index'))
-    token = google.authorize_access_token()
-    user_info = token.get('userinfo')
-    if user_info:
-        session['user'] = user_info
-    return redirect(url_for('index'))
-
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect(url_for('index'))
-
-# 📺 ---- MAIN APP ROUTES ----
 @app.route('/')
 def index():
-    user = session.get('user')
-    return render_template('index.html', user=user)
+    return render_template('index.html')
 
 @app.route('/search')
 def search():
@@ -133,12 +106,11 @@ def search():
         r = requests.get(url).json()
         videos = []
         for item in r.get('items', []):
-            if 'videoId' in item['id']:
-                videos.append({
-                    "title": item['snippet']['title'],
-                    "thumbnail": item['snippet']['thumbnails']['high']['url'],
-                    "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-                })
+            videos.append({
+                "title": item['snippet']['title'],
+                "thumbnail": item['snippet']['thumbnails']['high']['url'],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
@@ -146,44 +118,60 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
+    
+    # ভিডিওর ইনফো ও প্লে-লিঙ্ক বের করার সময় কুকিজের সেটিংস ব্যবহার করা হচ্ছে
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'noplaylist': True,
         **YTDL_CLIENT_ARGS
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
-            play_url = None
-            for f in reversed(formats):
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
-                    play_url = f['url']
-                    break
-            if not play_url:
-                play_url = info.get('url')
+            play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
             return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+# ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
 def start_download_route():
+    global download_status
     video_url = request.args.get('url')
-    quality = request.args.get('quality', 'medium_hd')
+    quality = request.args.get('quality', '720p')
+    
     if download_status['status'] == 'downloading':
         return jsonify({"error": "একটি ডাউনলোড ইতিমধ্যে চলছে!"}), 400
+        
     download_status = {"status": "downloading", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
+# ফ্রন্টএন্ড থেকে লাইভ স্ট্যাটাস চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
-@app.route('/download_file/<path:filename>')
-def download_file(filename):
-    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
+# ডাউনলোড বাতিল করার রুট
+@app.route('/cancel_download')
+def cancel_download():
+    global download_status
+    cancel_event.set()
+    download_status['status'] = 'cancelled'
+    return jsonify({"message": "Download cancellation requested"})
+
+# ডাউনলোড করা ফাইল সরাসরি ব্রাউজারে প্লে করার রুট
+@app.route('/play_file/<filename>')
+def play_file(filename):
+    return send_from_directory(DOWNLOAD_FOLDER, filename)
+
+@app.route('/get_downloads')
+def get_downloads():
+    files = os.listdir(DOWNLOAD_FOLDER)
+    return jsonify(files)
 
 if __name__ == '__main__':
+    # Render-এ পোর্ট ডায়নামিকালি অ্যাসাইন করার জন্য os.environ ব্যবহার করা হলো
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
     
