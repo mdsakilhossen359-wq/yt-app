@@ -1,13 +1,30 @@
-from flask import Flask, render_template, request, send_from_directory, jsonify
+from flask import Flask, render_template, request, send_from_directory, jsonify, session, redirect, url_for
+from authlib.integrations.flask_client import OAuth
 import yt_dlp
 import os
 import threading
 import requests
 
 app = Flask(__name__, template_folder='templates')
+app.secret_key = os.environ.get("SECRET_KEY", "yt-app-secure-key-998877")
+
+# 🔐 Google Cloud থেকে পাওয়া Client ID এবং Secret এখানে বসাবেন (ঐচ্ছিক)
+GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET"
+
+# Authlib OAuth কনফিগারেশন
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 DOWNLOAD_FOLDER = '/tmp/downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
+COOKIES_FILE = 'cookies.txt'
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -15,18 +32,22 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 download_status = {"status": "idle", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
 cancel_event = threading.Event()
 
-# ইউটিউব বট ব্লকিং বাইপাস করার জন্য বিশেষ ক্লায়েন্ট আর্গুমেন্ট
+# 🛡️ ইউটিউব বাইপাস করার জন্য শক্তিশালী কনফিগারেশন
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
     'extractor_args': {
         'youtube': {
-            # এটি ইউটিউবকে বোকা বানাবে যে রিকোয়েস্টটি কোনো সার্ভার থেকে নয়, আসল মোবাইল থেকে আসছে
-            'player_client': ['android_music', 'android', 'web_embedded'],
+            'player_client': ['android', 'web_embedded'],
             'skip': ['webpage', 'player']
         }
     }
 }
+
+# আপনার দেওয়া cookies.txt ফাইলটি সিস্টেমে থাকলে তা স্বয়ংক্রিয়ভাবে সংযুক্ত হবে
+if os.path.exists(COOKIES_FILE):
+    YTDL_CLIENT_ARGS['cookiefile'] = COOKIES_FILE
+    print("✅ cookies.txt successfully loaded into yt-dlp!")
 
 def ytdl_hook(d):
     global download_status
@@ -68,13 +89,35 @@ def run_download(video_url, quality):
             filename = ydl.prepare_filename(info)
             download_status['filename'] = os.path.basename(filename)
             download_status['status'] = 'completed'
-    except Exception as e:
+    except Exception:
         download_status['status'] = 'error'
         download_status['progress'] = 0
 
+# 🌐 ---- জিমেইল লগইন রাউটস ----
+@app.route('/login')
+def login():
+    redirect_uri = url_for('auth_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/callback')
+def auth_callback():
+    token = google.authorize_access_token()
+    user_info = token.get('userinfo')
+    if user_info:
+        session['user'] = user_info
+    return redirect(url_for('index'))
+
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect(url_for('index'))
+
+
+# 📺 ---- অ্যাপের মেইন রাউটস ----
 @app.route('/')
 def index():
-    return render_template('index.html')
+    user = session.get('user')
+    return render_template('index.html', user=user)
 
 @app.route('/search')
 def search():
@@ -119,7 +162,6 @@ def get_info():
 
 @app.route('/start_download')
 def start_download_route():
-    global download_status
     video_url = request.args.get('url')
     quality = request.args.get('quality', 'medium_hd')
     if download_status['status'] == 'downloading':
@@ -132,23 +174,9 @@ def start_download_route():
 def progress():
     return jsonify(download_status)
 
-@app.route('/cancel_download')
-def cancel_download():
-    global download_status
-    cancel_event.set()
-    download_status['status'] = 'cancelled'
-    return jsonify({"message": "Download cancellation requested"})
-
 @app.route('/download_file/<path:filename>')
 def download_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
-
-@app.route('/check_file/<path:filename>')
-def check_file(filename):
-    path = os.path.join(DOWNLOAD_FOLDER, filename)
-    if os.path.exists(path):
-        return jsonify({"exists": True})
-    return jsonify({"exists": False}), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
