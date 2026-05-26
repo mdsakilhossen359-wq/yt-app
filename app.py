@@ -6,21 +6,25 @@ import threading
 import requests
 
 app = Flask(__name__, template_folder='templates')
-app.secret_key = os.environ.get("SECRET_KEY", "yt-app-secure-key-998877")
+app.secret_key = os.environ.get("SECRET_KEY", "yt-app-super-secure-key-2026")
 
-# 🔐 Google Cloud থেকে পাওয়া Client ID এবং Secret এখানে বসাবেন (ঐচ্ছিক)
-GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET"
+# 🔐 গুগল ক্লাউড ক্রেডেনশিয়াল (ফাঁকা রাখলেও অ্যাপ এখন ক্র্যাশ করবে না)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "YOUR_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
 
-# Authlib OAuth কনফিগারেশন
+# Safe OAuth initialization
 oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'}
-)
+try:
+    google = oauth.register(
+        name='google',
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid email profile'}
+    )
+except Exception as e:
+    print(f"OAuth Configuration warning: {e}")
+    google = None
 
 DOWNLOAD_FOLDER = '/tmp/downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
@@ -32,7 +36,7 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 download_status = {"status": "idle", "progress": 0, "speed": "0 KB/s", "eta": "00:00", "filename": ""}
 cancel_event = threading.Event()
 
-# 🛡️ ইউটিউব বাইপাস করার জন্য শক্তিশালী কনফিগারেশন
+# 🛡️ ইউটিউব বাইপাস করার জন্য আপনার ফ্রেশ কুকিজ লোড করা হচ্ছে
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
@@ -44,15 +48,16 @@ YTDL_CLIENT_ARGS = {
     }
 }
 
-# আপনার দেওয়া cookies.txt ফাইলটি সিস্টেমে থাকলে তা স্বয়ংক্রিয়ভাবে সংযুক্ত হবে
 if os.path.exists(COOKIES_FILE):
     YTDL_CLIENT_ARGS['cookiefile'] = COOKIES_FILE
-    print("✅ cookies.txt successfully loaded into yt-dlp!")
+    print("✅ New cookies.txt successfully injected into yt-dlp!")
+else:
+    print("⚠️ Warning: cookies.txt not found!")
 
 def ytdl_hook(d):
     global download_status
     if cancel_event.is_set():
-        raise Exception("Download cancelled by user")
+        raise Exception("Download cancelled")
     if d['status'] == 'downloading':
         download_status['status'] = 'downloading'
         total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
@@ -63,7 +68,6 @@ def ytdl_hook(d):
         download_status['eta'] = d.get('_eta_str', '00:00')
     elif d['status'] == 'finished':
         download_status['status'] = 'completed'
-        download_status['progress'] = 100
 
 def run_download(video_url, quality):
     global download_status
@@ -91,16 +95,18 @@ def run_download(video_url, quality):
             download_status['status'] = 'completed'
     except Exception:
         download_status['status'] = 'error'
-        download_status['progress'] = 0
 
-# 🌐 ---- জিমেইল লগইন রাউটস ----
+# 🌐 ---- LOGIN ROUTES ----
 @app.route('/login')
 def login():
+    if not google or GOOGLE_CLIENT_ID == "YOUR_CLIENT_ID":
+        return "Google Login is not configured yet. Please set Client ID in app.py", 400
     redirect_uri = url_for('auth_callback', _external=True)
     return google.authorize_redirect(redirect_uri)
 
 @app.route('/callback')
 def auth_callback():
+    if not google: return redirect(url_for('index'))
     token = google.authorize_access_token()
     user_info = token.get('userinfo')
     if user_info:
@@ -112,8 +118,7 @@ def logout():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-
-# 📺 ---- অ্যাপের মেইন রাউটস ----
+# 📺 ---- MAIN APP ROUTES ----
 @app.route('/')
 def index():
     user = session.get('user')
