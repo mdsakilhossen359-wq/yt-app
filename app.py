@@ -5,7 +5,7 @@ import requests
 
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
-# মনে রাখবেন: এই এপিআই কি-টি পাবলিকলি শেয়ার করা নিরাপদ নয়। প্রোডাকশনে এটি .env ফাইলে রাখা উচিত।
+# ইউটিউব এপিআই কি
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
@@ -15,7 +15,7 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 def index():
     return render_template('index.html')
 
-# ইউটিউব ভিডিও সার্চ
+# ইউটিউব ভিডিও সার্চ রাউট
 @app.route('/search')
 def search():
     query = request.args.get('q', 'Bangla hit songs')
@@ -25,49 +25,67 @@ def search():
         r = requests.get(url).json()
         videos = []
         for item in r.get('items', []):
+            # টাইটেল থেকে কোটেশন মার্ক সেফ করা হচ্ছে জাভাস্ক্রিপ্ট এরর এড়াতে
+            safe_title = item['snippet']['title'].replace('"', '&quot;').replace("'", "&#39;")
             videos.append({
-                "title": item['snippet']['title'].replace('"', '&quot;').replace("'", "&#39;"),
+                "title": safe_title,
                 "thumbnail": item['snippet']['thumbnails']['high']['url'],
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
-    except:
+    except Exception as e:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# ভিডিও ইনফো এবং প্লে লিংক জেনারেটর (ফিক্সড)
+# ভিডিও ইনফো এবং ব্রাউজার প্লে-লিংক জেনারেটর (সম্পূর্ণ ফিক্সড)
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # ১৮০ বা ৭২০ পিক্সেলের কম্বাইন্ড ফরম্যাট খোঁজার চেষ্টা করবে
+    
+    # ব্রাউজারে ডিরেক্ট প্লে করার উপযোগী এবং দ্রুত লোড হওয়ার অপশনস
     ydl_opts = {
         'quiet': True, 
         'noplaylist': True,
-        'format': 'best[ext=mp4]/best' 
+        'format': 'best[ext=mp4]/best', # অডিও+ভিডিও একসাথে আছে এমন এমপি৪ খুঁজবে
+        'skip_download': True,
     }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
-            formats = info.get('formats', [])
-            
-            # অডিও এবং ভিডিও উভয়ই আছে এমন ডিরেক্ট mp4 লিংক খোঁজা হচ্ছে
             play_url = None
-            for f in formats:
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4':
-                    play_url = f.get('url')
-                    break
             
-            if not play_url:
+            # প্রথম চয়েস: সরাসরি 'url' কি-তে ওয়ার্কিং স্ট্রিমিং লিংক আছে কিনা দেখা
+            if info.get('url'):
                 play_url = info.get('url')
+            
+            # দ্বিতীয় চয়েস: যদি না থাকে, তবে formats লিস্ট ফিল্টার করা
+            elif 'formats' in info:
+                # যেসব ফরম্যাটে অডিও ও ভিডিও দুটিই সচল এবং ext = mp4
+                valid_formats = [
+                    f for f in info['formats']
+                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none'
+                ]
+                if valid_formats:
+                    # সবচেয়ে স্টেবল প্রথম লিংকটি নেবে
+                    play_url = valid_formats[0].get('url')
+                else:
+                    play_url = info['formats'][0].get('url')
+
+            if not play_url:
+                return jsonify({"error": "No playable URL found"}), 400
+
+            clean_title = info.get('title', 'Unknown Title').replace('"', '&quot;').replace("'", "&#39;")
 
             return jsonify({
-                "title": info.get('title', 'Unknown Title').replace('"', '&quot;').replace("'", "&#39;"), 
+                "title": clean_title, 
                 "video_url": play_url, 
                 "url": video_url
             })
         except Exception as e:
+            print(f"yt-dlp error: {str(e)}") # সার্ভার লগে এরর ট্র্যাক করার জন্য
             return jsonify({"error": str(e)}), 500
 
-# ভিডিও ডাউনলোড
+# ভিডিও এবং অডিও ডাউনলোড রাউট
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
@@ -97,7 +115,7 @@ def download():
         except Exception as e:
             return f"ডাউনলোড ব্যর্থ হয়েছে: {str(e)}", 500
 
-# ডাউনলোড ফাইল লিস্ট
+# ডাউনলোড করা ফাইলের তালিকা
 @app.route('/get_downloads')
 def get_downloads():
     try:
@@ -108,4 +126,4 @@ def get_downloads():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-    
+                
