@@ -13,7 +13,7 @@
         .header { position: sticky; top: 0; z-index: 1000; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(10px); padding: 15px; border-bottom: 1px solid #333; }
         .search-bar { background: #222; border: 1px solid #444; color: white; border-radius: 50px; padding-left: 20px; }
         
-        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; transition: 0.3s; }
+        .v-card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #222; cursor: pointer; transition: 0.3s; }
         .v-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
         .v-title { padding: 10px; font-size: 14px; font-weight: bold; height: 55px; overflow: hidden; }
 
@@ -74,10 +74,10 @@
 </div>
 
 <div class="bottom-nav">
-    <button class="nav-btn active" onclick="showSection('home')"><i class="fas fa-home"></i>Home</button>
-    <button class="nav-btn" onclick="showSection('playing')"><i class="fas fa-play"></i>Playing</button>
-    <button class="nav-btn" onclick="showSection('history')"><i class="fas fa-history"></i>History</button>
-    <button class="nav-btn" onclick="showSection('download')"><i class="fas fa-download"></i>Downloads</button>
+    <button class="nav-btn active" id="btn-home" onclick="showSection('home')"><i class="fas fa-home"></i>Home</button>
+    <button class="nav-btn" id="btn-playing" onclick="showSection('playing')"><i class="fas fa-play"></i>Playing</button>
+    <button class="nav-btn" id="btn-history" onclick="showSection('history')"><i class="fas fa-history"></i>History</button>
+    <button class="nav-btn" id="btn-download" onclick="showSection('download')"><i class="fas fa-download"></i>Downloads</button>
 </div>
 
 <script>
@@ -88,16 +88,18 @@
     // ১. ভিডিও লোড করা (Home)
     async function loadVideos(q, append = false) {
         document.getElementById('loader').style.display = "block";
-        const res = await fetch(`/search?q=${q}&pageToken=${nextPageToken}`);
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}&pageToken=${nextPageToken}`);
         const data = await res.json();
         
         const feed = document.getElementById('video-feed');
         if (!append) feed.innerHTML = "";
         
         data.videos.forEach(v => {
+            // কোটেশন এরর এড়াতে ভ্যালুগুলোকে সেফলি পাস করা হয়েছে
+            const safeUrl = encodeURIComponent(v.url);
             feed.innerHTML += `
                 <div class="col">
-                    <div class="v-card" onclick="playThis('${v.url}', '${v.title.replace(/'/g, "")}')">
+                    <div class="v-card" onclick="playThis('${safeUrl}')">
                         <img src="${v.thumbnail}">
                         <div class="v-title">${v.title}</div>
                     </div>
@@ -107,20 +109,33 @@
         document.getElementById('loader').style.display = "none";
     }
 
-    // ২. ভিডিও প্লে করা
-    async function playThis(url, title) {
+    // ২. ভিডিও প্লে করা (ফিক্সড)
+    async function playThis(encodedUrl) {
+        const url = decodeURIComponent(encodedUrl);
         playingUrl = url;
+        
+        // প্লেয়িং সেকশন দেখাবে এবং বাটনে একটিভ ক্লাস যোগ করবে
         showSection('playing');
         document.getElementById('playTitle').innerText = "Loading details...";
+        document.getElementById('mainVideo').src = "";
         
-        const fd = new FormData();
-        fd.append('url', url);
-        const res = await fetch('/get_info', {method: 'POST', body: fd});
-        const data = await res.json();
-        
-        document.getElementById('mainVideo').src = data.video_url;
-        document.getElementById('playTitle').innerText = data.title;
-        addToHistory(data.title);
+        try {
+            const fd = new FormData();
+            fd.append('url', url);
+            const res = await fetch('/get_info', {method: 'POST', body: fd});
+            const data = await res.json();
+            
+            if(data.error || !data.video_url) {
+                document.getElementById('playTitle').innerText = "Error loading video streaming URL.";
+                return;
+            }
+            
+            document.getElementById('mainVideo').src = data.video_url;
+            document.getElementById('playTitle').innerHTML = data.title;
+            addToHistory(data.title);
+        } catch (err) {
+            document.getElementById('playTitle').innerText = "Server Error!";
+        }
     }
 
     // ৩. সেকশন পরিবর্তন লজিক
@@ -129,7 +144,7 @@
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         
         document.getElementById(name + '-sec').classList.add('active');
-        event.currentTarget.classList.add('active');
+        document.getElementById('btn-' + name).classList.add('active');
         
         if(name === 'download') loadDownloadFiles();
     }
@@ -152,20 +167,33 @@
     }
 
     function handleSearch() {
-        const val = document.getElementById('searchInput').value;
-        if(val.includes('http')) playThis(val, "Link Video");
-        else { currentQuery = val; nextPageToken = ""; loadVideos(val); showSection('home'); }
+        const val = document.getElementById('searchInput').value.trim();
+        if(!val) return;
+        if(val.includes('http://') || val.includes('https://')) {
+            playThis(encodeURIComponent(val));
+        } else { 
+            currentQuery = val; 
+            nextPageToken = ""; 
+            loadVideos(val); 
+            showSection('home'); 
+        }
     }
 
     function startDownload(q) {
-        alert("ডাউনলোড শুরু হচ্ছে... দয়া করে অপেক্ষা করুন।");
+        if(!playingUrl) {
+            alert("প্রথমে একটি ভিডিও প্লে করুন।");
+            return;
+        }
+        alert("ডাউনলোড শুরু হচ্ছে... ব্যাকএন্ডে প্রসেস হতে কিছুটা সময় লাগতে পারে। দয়া করে অপেক্ষা করুন।");
         window.location.href = `/download?url=${encodeURIComponent(playingUrl)}&quality=${q}`;
     }
 
     // আনলিমিটেড স্ক্রল
     window.onscroll = () => {
-        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
-            if(document.getElementById('home-sec').classList.contains('active')) loadVideos(currentQuery, true);
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 600) {
+            if(document.getElementById('home-sec').classList.contains('active') && document.getElementById('loader').style.display === "none") {
+                loadVideos(currentQuery, true);
+            }
         }
     };
 
