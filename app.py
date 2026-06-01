@@ -7,7 +7,7 @@ import requests
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
-COOKIES_FILE = 'cookies.txt'
+COOKIES_FILE = 'cookies.txt'  # আপনার পাঠানো কুকিজ ফাইল ট্র্যাক করার জন্য
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -22,7 +22,7 @@ download_status = {
 }
 cancel_event = threading.Event()
 
-# 🛡️ ইউটিউব ব্লকিং বাইপাস করার জন্য অপ্টিমাইজড সেটিংস
+# 🛡️ ইউটিউব ব্লকিং বাইপাস করার ব্যাকএন্ড কনফিগারেশন
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
@@ -36,9 +36,6 @@ YTDL_CLIENT_ARGS = {
 
 if os.path.exists(COOKIES_FILE):
     YTDL_CLIENT_ARGS['cookiefile'] = COOKIES_FILE
-    print("✅ cookies.txt successfully loaded into yt-dlp!")
-else:
-    print("⚠️ Warning: cookies.txt not found!")
 
 def ytdl_hook(d):
     global download_status
@@ -72,7 +69,7 @@ def run_download(video_url, quality):
         'format': q_map.get(quality, 'best'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
-        **YTDL_CLIENT_ARGS
+        **YTDL_CLIENT_ARGS  # কুকিজ এখানে পুশ করা হলো
     }
     
     if quality == 'mp3':
@@ -115,32 +112,30 @@ def search():
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# 🛠️ এই রুটের স্ট্রিমিং লিঙ্ক ফিল্টারিং ফিক্স করা হয়েছে যেন ব্রাউজারে এরর না আসে
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
     
-    # ব্রাউজার ফ্রেন্ডলি কম্বাইন্ড mp4 (ভিডিও + অডিও একসঙ্গে) খোঁজার জন্য ফরম্যাট অপ্টিমাইজেশন
+    # আপনার আগের লজিক, শুধু সাথে কুকিজ আর্গুমেন্ট যুক্ত করা হয়েছে
     ydl_opts = {
-        'format': 'best[ext=mp4]/best', 
+        'format': 'best[ext=mp4]/best',
         'noplaylist': True,
         **YTDL_CLIENT_ARGS
     }
-    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
             
+            # সরাসরি ব্রাউজারে প্লে হওয়ার মতো অডিও-ভিডিও কম্বাইন্ড লিঙ্ক ফিল্টারিং
             play_url = None
-            # সরাসরি প্লে হওয়ার মতো ভ্যালিড mp4 স্ট্রিমিং ইউআরএল খোঁজা হচ্ছে
             for f in reversed(formats):
                 if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
                     play_url = f['url']
                     break
-                    
+            
             if not play_url:
-                play_url = info.get('url')
+                play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
                 
             return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
         except Exception as e:
@@ -184,6 +179,7 @@ def get_downloads():
     return jsonify(files)
 
 if __name__ == '__main__':
+    # Render হোস্টিং-এর জন্য পোর্ট ডায়নামিক রাখা আবশ্যক
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
     
