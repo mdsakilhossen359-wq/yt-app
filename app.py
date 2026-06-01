@@ -1,11 +1,11 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
+from flask import Flask, render_template, request, send_file, jsonify
 import yt_dlp
 import os
-import time
 import requests
 
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
+# মনে রাখবেন: এই এপিআই কি-টি পাবলিকলি শেয়ার করা নিরাপদ নয়। প্রোডাকশনে এটি .env ফাইলে রাখা উচিত।
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
@@ -26,7 +26,7 @@ def search():
         videos = []
         for item in r.get('items', []):
             videos.append({
-                "title": item['snippet']['title'],
+                "title": item['snippet']['title'].replace('"', '&quot;').replace("'", "&#39;"),
                 "thumbnail": item['snippet']['thumbnails']['high']['url'],
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
@@ -34,21 +34,40 @@ def search():
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# ভিডিও ইনফো এবং প্লে লিঙ্ক
+# ভিডিও ইনফো এবং প্লে লিংক জেনারেটর (ফিক্সড)
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    ydl_opts = {'quiet': True, 'noplaylist': True}
+    # ১৮০ বা ৭২০ পিক্সেলের কম্বাইন্ড ফরম্যাট খোঁজার চেষ্টা করবে
+    ydl_opts = {
+        'quiet': True, 
+        'noplaylist': True,
+        'format': 'best[ext=mp4]/best' 
+    }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
-            play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
-            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
+            
+            # অডিও এবং ভিডিও উভয়ই আছে এমন ডিরেক্ট mp4 লিংক খোঁজা হচ্ছে
+            play_url = None
+            for f in formats:
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4':
+                    play_url = f.get('url')
+                    break
+            
+            if not play_url:
+                play_url = info.get('url')
+
+            return jsonify({
+                "title": info.get('title', 'Unknown Title').replace('"', '&quot;').replace("'", "&#39;"), 
+                "video_url": play_url, 
+                "url": video_url
+            })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# ভিডিও ডাউনলোড (ফাইলটি সার্ভারে জমা থাকবে)
+# ভিডিও ডাউনলোড
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
@@ -62,22 +81,29 @@ def download():
 
     ydl_opts = {
         'format': q_map.get(quality, 'best'),
-        'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s', # টাইটেল অনুযায়ী সেভ হবে
+        'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
     }
     
     if quality == 'mp3':
         ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=True)
-        filename = ydl.prepare_filename(info)
-        if quality == 'mp3': filename = filename.rsplit('.', 1)[0] + '.mp3'
-        return send_file(filename, as_attachment=True)
+        try:
+            info = ydl.extract_info(video_url, download=True)
+            filename = ydl.prepare_filename(info)
+            if quality == 'mp3': 
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
+            return send_file(filename, as_attachment=True)
+        except Exception as e:
+            return f"ডাউনলোড ব্যর্থ হয়েছে: {str(e)}", 500
 
-# ডাউনলোড করা ফাইলগুলোর লিস্ট দেখা
+# ডাউনলোড ফাইল লিস্ট
 @app.route('/get_downloads')
 def get_downloads():
-    files = os.listdir(DOWNLOAD_FOLDER)
+    try:
+        files = os.listdir(DOWNLOAD_FOLDER)
+    except:
+        files = []
     return jsonify(files)
 
 if __name__ == '__main__':
