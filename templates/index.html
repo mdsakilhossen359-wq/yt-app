@@ -19,7 +19,7 @@
 
         /* Navigation Style */
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #1a1a1a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #333; z-index: 2000; }
-        .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; }
+        .nav-btn { background: none; border: none; color: #888; font-size: 11px; text-align: center; flex: 1; cursor: pointer; }
         .nav-btn.active { color: var(--primary); }
         .nav-btn i { font-size: 20px; display: block; margin-bottom: 3px; }
 
@@ -85,39 +85,42 @@
     let currentQuery = "Bangla new songs";
     let playingUrl = "";
 
-    // ১. ভিডিও লোড করা (Home)
+    // ১. ইউটিউব ভিডিও এপিআই থেকে ডেটা লোড করা
     async function loadVideos(q, append = false) {
         document.getElementById('loader').style.display = "block";
-        const res = await fetch(`/search?q=${encodeURIComponent(q)}&pageToken=${nextPageToken}`);
-        const data = await res.json();
-        
-        const feed = document.getElementById('video-feed');
-        if (!append) feed.innerHTML = "";
-        
-        data.videos.forEach(v => {
-            // কোটেশন এরর এড়াতে ভ্যালুগুলোকে সেফলি পাস করা হয়েছে
-            const safeUrl = encodeURIComponent(v.url);
-            feed.innerHTML += `
-                <div class="col">
-                    <div class="v-card" onclick="playThis('${safeUrl}')">
-                        <img src="${v.thumbnail}">
-                        <div class="v-title">${v.title}</div>
-                    </div>
-                </div>`;
-        });
-        nextPageToken = data.nextPageToken;
+        try {
+            const res = await fetch(`/search?q=${encodeURIComponent(q)}&pageToken=${nextPageToken}`);
+            const data = await res.json();
+            
+            const feed = document.getElementById('video-feed');
+            if (!append) feed.innerHTML = "";
+            
+            data.videos.forEach(v => {
+                const safeUrl = encodeURIComponent(v.url);
+                feed.innerHTML += `
+                    <div class="col">
+                        <div class="v-card" onclick="playThis('${safeUrl}')">
+                            <img src="${v.thumbnail}">
+                            <div class="v-title">${v.title}</div>
+                        </div>
+                    </div>`;
+            });
+            nextPageToken = data.nextPageToken;
+        } catch (err) {
+            console.error("Failed to load videos");
+        }
         document.getElementById('loader').style.display = "none";
     }
 
-    // ২. ভিডিও প্লে করা (ফিক্সড)
+    // ২. ভিডিও প্লেয়ার সোর্স লোড করা (ফিক্সড)
     async function playThis(encodedUrl) {
         const url = decodeURIComponent(encodedUrl);
         playingUrl = url;
         
-        // প্লেয়িং সেকশন দেখাবে এবং বাটনে একটিভ ক্লাস যোগ করবে
         showSection('playing');
         document.getElementById('playTitle').innerText = "Loading details...";
-        document.getElementById('mainVideo').src = "";
+        const videoPlayer = document.getElementById('mainVideo');
+        videoPlayer.src = ""; // প্লেয়ার রিসেট
         
         try {
             const fd = new FormData();
@@ -125,20 +128,23 @@
             const res = await fetch('/get_info', {method: 'POST', body: fd});
             const data = await res.json();
             
-            if(data.error || !data.video_url) {
+            if (data.error || !data.video_url) {
                 document.getElementById('playTitle').innerText = "Error loading video streaming URL.";
                 return;
             }
             
-            document.getElementById('mainVideo').src = data.video_url;
+            videoPlayer.src = data.video_url;
+            videoPlayer.load();
+            videoPlayer.play().catch(e => console.log("Autoplay blocked by browser. User interaction needed."));
+            
             document.getElementById('playTitle').innerHTML = data.title;
             addToHistory(data.title);
         } catch (err) {
-            document.getElementById('playTitle').innerText = "Server Error!";
+            document.getElementById('playTitle').innerText = "Server connection failed!";
         }
     }
 
-    // ৩. সেকশন পরিবর্তন লজিক
+    // ৩. সেকশন ন্যাভিগেশন পরিবর্তন করা
     function showSection(name) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -146,10 +152,10 @@
         document.getElementById(name + '-sec').classList.add('active');
         document.getElementById('btn-' + name).classList.add('active');
         
-        if(name === 'download') loadDownloadFiles();
+        if (name === 'download') loadDownloadFiles();
     }
 
-    // ৪. ডাউনলোড লিস্ট লোড করা
+    // ৪. ডাউনলোড করা ফাইলের লিস্ট লোড করা
     async function loadDownloadFiles() {
         const res = await fetch('/get_downloads');
         const files = await res.json();
@@ -160,7 +166,7 @@
         });
     }
 
-    // ৫. ইতিহাস ও সার্চ
+    // ৫. সার্চ এবং হিস্ট্রি হ্যান্ডেল
     function addToHistory(title) {
         const list = document.getElementById('history-list');
         list.innerHTML = `<div class="list-item"><i class="fas fa-check-circle text-success"></i> ${title}</div>` + list.innerHTML;
@@ -168,8 +174,8 @@
 
     function handleSearch() {
         const val = document.getElementById('searchInput').value.trim();
-        if(!val) return;
-        if(val.includes('http://') || val.includes('https://')) {
+        if (!val) return;
+        if (val.includes('http://') || val.includes('https://')) {
             playThis(encodeURIComponent(val));
         } else { 
             currentQuery = val; 
@@ -180,18 +186,18 @@
     }
 
     function startDownload(q) {
-        if(!playingUrl) {
+        if (!playingUrl) {
             alert("প্রথমে একটি ভিডিও প্লে করুন।");
             return;
         }
-        alert("ডাউনলোড শুরু হচ্ছে... ব্যাকএন্ডে প্রসেস হতে কিছুটা সময় লাগতে পারে। দয়া করে অপেক্ষা করুন।");
+        alert("ডাউনলোড প্রসেস শুরু হচ্ছে... ক্লাউড সার্ভার (Render) প্রসেস করতে কিছুটা সময় লাগতে পারে। অনুগ্রহ করে অপেক্ষা করুন।");
         window.location.href = `/download?url=${encodeURIComponent(playingUrl)}&quality=${q}`;
     }
 
-    // আনলিমিটেড স্ক্রল
+    // ইনফিনিটি স্ক্রলিং লজিক
     window.onscroll = () => {
         if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 600) {
-            if(document.getElementById('home-sec').classList.contains('active') && document.getElementById('loader').style.display === "none") {
+            if (document.getElementById('home-sec').classList.contains('active') && document.getElementById('loader').style.display === "none") {
                 loadVideos(currentQuery, true);
             }
         }
