@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory
+from flask import Flask, render_template, request, send_file, jsonify, send_from_directory, Response
 import yt_dlp
 import os
 import threading
@@ -22,7 +22,7 @@ download_status = {
 }
 cancel_event = threading.Event()
 
-# 🛡️ ইউটিউবের নতুন ব্লকিং মেকানিজম বাইপাস করার জন্য অপ্টিমাইজড ক্লায়েন্ট আর্গুমেন্ট
+# 🛡️ ইউটিউব ব্লকিং সম্পূর্ণ বাইপাস করার কনফিগারেশন
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
@@ -112,12 +112,11 @@ def search():
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# 🛠️ [FIXED] সরাসরি ব্রাউজারে প্লে হওয়ার মতো নিখুঁত স্ট্রিম লিঙ্ক বের করার লজিক
+# 🛠️ [FIXED] সরাসরি সার্ভার প্রক্সি দিয়ে স্ট্রিমিং লিঙ্ক জেনারেট করার রুট
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
     
-    # ব্রাউজার ফ্রেন্ডলি কম্বাইন্ড mp4 ফরম্যাট টার্গেট করা হয়েছে
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'noplaylist': True,
@@ -128,19 +127,50 @@ def get_info():
             info = ydl.extract_info(video_url, download=False)
             formats = info.get('formats', [])
             
-            play_url = None
-            # লুপ চালিয়ে এমন একটি ফরম্যাট খোঁজা হচ্ছে যা একই সাথে অডিও ও ভিডিও ধারণ করে এবং ব্রাউজারে ডিরেক্ট চলে
+            raw_url = None
             for f in reversed(formats):
                 if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
-                    play_url = f['url']
+                    raw_url = f['url']
                     break
             
-            if not play_url:
-                play_url = info.get('url')
+            if not raw_url:
+                raw_url = info.get('url')
+            
+            # ⚡ আইপি ব্লকিং এড়াতে সরাসরি ইউটিউবের লিঙ্ক না দিয়ে আমাদের সার্ভারের নিজস্ব প্রক্সি রুট জেনারেট করা হলো
+            proxy_play_url = f"/stream_proxy?url={requests.utils.quote(raw_url)}"
                 
-            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
+            return jsonify({"title": info['title'], "video_url": proxy_play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+# ⚡ [NEW] ইউটিউবের ডেটা সার্ভার থেকে রিড করে সরাসরি ইউজারের প্লেয়ারে প্রক্সি করার রুট
+@app.route('/stream_proxy')
+def stream_proxy():
+    target_url = request.args.get('url')
+    if not target_url:
+        return "Missing URL", 400
+        
+    req_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Range': request.headers.get('Range', '')
+    }
+    
+    r = requests.get(target_url, headers=req_headers, stream=True)
+    
+    # ব্রাউজার বা মোবাইল প্লেয়ারের জন্য হেডার কপি করা
+    response_headers = {
+        'Content-Type': r.headers.get('Content-Type', 'video/mp4'),
+        'Content-Length': r.headers.get('Content-Length', ''),
+        'Accept-Ranges': 'bytes'
+    }
+    if r.headers.get('Content-Range'):
+        response_headers['Content-Range'] = r.headers.get('Content-Range')
+        
+    def generate():
+        for chunk in r.iter_content(chunk_size=1024*1024):
+            yield chunk
+            
+    return Response(generate(), status=r.status_code, headers=response_headers)
 
 # ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
@@ -180,7 +210,6 @@ def get_downloads():
     return jsonify(files)
 
 if __name__ == '__main__':
-    # 🛠️ [FIXED] Render-এর পোর্ট ক্র্যাশ সমস্যা দূর করতে ডায়নামিক পোর্ট পোর্ট সেট করা হলো
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
-    
+                
