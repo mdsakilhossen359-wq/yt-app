@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, send_from_directory, Response
+from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 import yt_dlp
 import os
 import threading
@@ -112,7 +112,7 @@ def search():
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# 🛠️ [FIXED] সরাসরি সার্ভার প্রক্সি দিয়ে স্ট্রিমিং লিঙ্ক জেনারেট করার রুট
+# 🛠️ সার্ভার প্রক্সি দিয়ে স্ট্রিমিং লিঙ্ক জেনারেট করার রুট
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
@@ -136,14 +136,14 @@ def get_info():
             if not raw_url:
                 raw_url = info.get('url')
             
-            # ⚡ আইপি ব্লকিং এড়াতে সরাসরি ইউটিউবের লিঙ্ক না দিয়ে আমাদের সার্ভারের নিজস্ব প্রক্সি রুট জেনারেট করা হলো
+            # ⚡ আইপি ব্লকিং এড়াতে সরাসরি প্রক্সি রুট জেনারেট করা হলো
             proxy_play_url = f"/stream_proxy?url={requests.utils.quote(raw_url)}"
                 
             return jsonify({"title": info['title'], "video_url": proxy_play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# ⚡ [NEW] ইউটিউবের ডেটা সার্ভার থেকে রিড করে সরাসরি ইউজারের প্লেয়ারে প্রক্সি করার রুট
+# ⚡ ইউটিউবের ডেটা সার্ভার থেকে রিড করে সরাসরি প্লেয়ারে প্রক্সি করার রুট
 @app.route('/stream_proxy')
 def stream_proxy():
     target_url = request.args.get('url')
@@ -157,7 +157,6 @@ def stream_proxy():
     
     r = requests.get(target_url, headers=req_headers, stream=True)
     
-    # ব্রাউজার বা মোবাইল প্লেয়ারের জন্য হেডার কপি করা
     response_headers = {
         'Content-Type': r.headers.get('Content-Type', 'video/mp4'),
         'Content-Length': r.headers.get('Content-Length', ''),
@@ -172,7 +171,6 @@ def stream_proxy():
             
     return Response(generate(), status=r.status_code, headers=response_headers)
 
-# ব্যাকগ্রাউন্ডে থ্রেড দিয়ে ডাউনলোড শুরু করার রুট
 @app.route('/start_download')
 def start_download_route():
     global download_status
@@ -186,12 +184,10 @@ def start_download_route():
     threading.Thread(target=run_download, args=(video_url, quality)).start()
     return jsonify({"message": "Download started"})
 
-# ফ্রন্টএন্ড থেকে লাইভ স্ট্যাটাস চেক করার রুট
 @app.route('/progress')
 def progress():
     return jsonify(download_status)
 
-# ডাউনলোড বাতিল করার রুট
 @app.route('/cancel_download')
 def cancel_download():
     global download_status
@@ -199,7 +195,6 @@ def cancel_download():
     download_status['status'] = 'cancelled'
     return jsonify({"message": "Download cancellation requested"})
 
-# ডাউনলোড করা ফাইল সরাসরি ব্রাউজারে প্লে করার রুট
 @app.route('/play_file/<filename>')
 def play_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename)
@@ -210,6 +205,7 @@ def get_downloads():
     return jsonify(files)
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
-                
+    # Railway ডিফল্ট পোর্ট (PORT পরিবেশ ভ্যারিয়েবল থেকে নেওয়া হবে)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(debug=False, host='0.0.0.0', port=port)
+    
