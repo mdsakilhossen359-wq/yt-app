@@ -7,12 +7,10 @@ import requests
 app = Flask(__name__)
 DOWNLOAD_FOLDER = 'downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
-COOKIES_FILE = 'cookies.txt'
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-# ডাউনলোডের লাইভ স্ট্যাটাস ট্র্যাকিং স্টেট
 download_status = {
     "status": "idle",
     "progress": 0,
@@ -22,20 +20,17 @@ download_status = {
 }
 cancel_event = threading.Event()
 
-# 🛡️ ইউটিউব ব্লকিং সম্পূর্ণ বাইপাস করার কনফিগারেশন
+# 🛡️ কুকিজ ছাড়াই ইউটিউব ব্লকিং বাইপাস করার জন্য সবচেয়ে শক্তিশালী অপ্টিমাইজড ক্লায়েন্ট আর্গুমেন্ট
 YTDL_CLIENT_ARGS = {
     'quiet': True,
     'noplaylist': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web_embedded'],
+            'player_client': ['ios', 'android', 'web_embedded'],
             'skip': ['webpage', 'player']
         }
     }
 }
-
-if os.path.exists(COOKIES_FILE):
-    YTDL_CLIENT_ARGS['cookiefile'] = COOKIES_FILE
 
 def ytdl_hook(d):
     global download_status
@@ -59,14 +54,15 @@ def run_download(video_url, quality):
     global download_status
     cancel_event.clear()
     
+    # রেডিমেড ফরম্যাট এভয়েড করে সহজ ভিডিও+অডিও কম্বিনেশন টার্গেট করা হয়েছে
     q_map = {
-        '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        '720p': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        'mp3': 'bestaudio/best'
+        '1080p': 'bv*[height<=1080]+ba/b[height<=1080]',
+        '720p': 'bv*[height<=720]+ba/b[height<=720]',
+        'mp3': 'ba/b'
     }
 
     ydl_opts = {
-        'format': q_map.get(quality, 'best'),
+        'format': q_map.get(quality, 'b'),
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
         **YTDL_CLIENT_ARGS
@@ -112,38 +108,35 @@ def search():
     except:
         return jsonify({"videos": [], "nextPageToken": ""})
 
-# 🛠️ সার্ভার প্রক্সি দিয়ে স্ট্রিমিং লিঙ্ক জেনারেট করার রুট
+# 🛠️ [FIXED] ফরম্যাট এরর এড়াতে যেকোনো সচল সরাসরি ভিডিও/অডিও লিঙ্ক প্রক্সি করার লজিক
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
     
+    # রেলওয়েতে 'Format not available' এরর দূর করতে একদম ওপেন ফরম্যাট ফিল্টারিং
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'b/bv+ba', 
         'noplaylist': True,
         **YTDL_CLIENT_ARGS
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
-            formats = info.get('formats', [])
             
-            raw_url = None
-            for f in reversed(formats):
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and 'manifest' not in f.get('url', ''):
-                    raw_url = f['url']
-                    break
+            # সরাসরি বেস্ট ইউআরএল তুলে আনা হচ্ছে
+            raw_url = info.get('url') or info.get('formats', [{}])[0].get('url')
             
             if not raw_url:
-                raw_url = info.get('url')
+                raise Exception("No streamable URL found")
             
-            # ⚡ আইপি ব্লকিং এড়াতে সরাসরি প্রক্সি রুট জেনারেট করা হলো
+            # প্রক্সি স্ট্রিমিং লিঙ্ক জেনারেশন
             proxy_play_url = f"/stream_proxy?url={requests.utils.quote(raw_url)}"
                 
             return jsonify({"title": info['title'], "video_url": proxy_play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-# ⚡ ইউটিউবের ডেটা সার্ভার থেকে রিড করে সরাসরি প্লেয়ারে প্রক্সি করার রুট
+# ⚡ [PROXY] রেলওয়ে আইপি দিয়ে ডাটা রিড করে বাফারিং ছাড়া প্লে করার স্ট্রিমার
 @app.route('/stream_proxy')
 def stream_proxy():
     target_url = request.args.get('url')
@@ -166,7 +159,7 @@ def stream_proxy():
         response_headers['Content-Range'] = r.headers.get('Content-Range')
         
     def generate():
-        for chunk in r.iter_content(chunk_size=1024*1024):
+        for chunk in r.iter_content(chunk_size=512*1024): # ৫১২ কেবি চাঙ্ক সাইজ দ্রুত লোডিং এর জন্য
             yield chunk
             
     return Response(generate(), status=r.status_code, headers=response_headers)
@@ -205,7 +198,6 @@ def get_downloads():
     return jsonify(files)
 
 if __name__ == '__main__':
-    # Railway ডিফল্ট পোর্ট (PORT পরিবেশ ভ্যারিয়েবল থেকে নেওয়া হবে)
     port = int(os.environ.get("PORT", 8080))
     app.run(debug=False, host='0.0.0.0', port=port)
     
