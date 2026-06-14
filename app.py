@@ -15,7 +15,7 @@ app.secret_key = "MY_SUPER_SECRET_MUSIC_APP_KEY_2026"
 DOWNLOAD_FOLDER = 'downloads'
 YOUTUBE_API_KEY = "AIzaSyAj_ZB8TOSQViO5MYQAfYEnf-T9LlcuFks"
 
-# 🔴 আপনার গুগল ক্লাউড ক্রেডেনশিয়ালস (আপনার আইডি নিচে যুক্ত করা হয়েছে)
+# 🔴 আপনার গুগল ক্লাউড ক্রেডেনশিয়ালস (ক্লায়েন্ট আইডি যুক্ত করা হয়েছে)
 CLIENT_ID = "187272375748-r72s3bf81b5fcj8isf9hk7a72adm2tar.apps.googleusercontent.com"
 CLIENT_SECRET = "YOUR_CLIENT_SECRET_HERE"  # ← এখানে আপনার গোপন Client Secret-টি বসিয়ে দিন
 REDIRECT_URI = "https://web-production-da519.up.railway.app/callback"
@@ -233,7 +233,7 @@ def cancel_download():
 def play_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename)
 
-@app.route('/get_downloads'):
+@app.route('/get_downloads')
 def get_downloads():
     try:
         files = os.listdir(DOWNLOAD_FOLDER)
